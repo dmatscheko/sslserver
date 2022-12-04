@@ -13,8 +13,9 @@ var domainsSelfSigned []string = []string{"localhost", "127.0.0.1"}
 
 // Set to true if the program should exit when a certificate is about to expire.
 // This allows to cache the certificates to the hard disk after the next start.
-// An external script has to restart the server.
+// Note 1: An external script has to restart the server!
+// Note 2: The server will only restart on Linux, because it makes no sense on Windows.
 var terminateIfCertificateExpires bool = false
 
 // Renew self signed certificates, if they expire within this duration.
-var durationToCertificateExpiryRefresh time.Duration = 24 * time.Hour
+var durationToCertificateExpiryRefresh time.Duration = 12 * time.Hour

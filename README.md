@@ -26,15 +26,20 @@ A web server that serves static files over HTTPS, manages TLS certificates, has 
 - If configured to do so, the web server terminates a configured duration before the first SSL certificate expires.
 - In this case, you have to restart the server with a script, it then creates a new Let's Encrypt certificate.
 
-## Build
+## Build and run
 
     go run .
 
-or
+or (on Linux)
 
     go build .
-    ./sslserver
+    sudo ./start.sh
+
+or (on Windows)
+
+    go build .
+    sslserver
 
 ## Configuration
 
-At the moment, you have to configure the server in the `config.go` and recompile.
+At the moment, you have to configure the server in the `config.go` and rebuild.
