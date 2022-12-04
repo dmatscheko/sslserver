@@ -29,7 +29,9 @@ A web server that serves static files over HTTPS, manages TLS certificates, has 
 ## Build
 
     go run .
+
 or
+
     go build .
     ./sslserver
 
