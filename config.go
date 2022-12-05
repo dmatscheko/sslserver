@@ -46,9 +46,9 @@ func readConfig() {
 	// Read the config file.
 	data, err := ioutil.ReadFile("config.yml")
 	if err != nil {
+		// If the file does not exist, create it.
 		log.Println("Configuration file config.yaml does not exist. Creating the file...")
 
-		// If the file does not exist, create it.
 		var config Config
 		config.DomainsLetsEncrypt = domainsLetsEncrypt
 		config.DomainsSelfSigned = domainsSelfSigned
