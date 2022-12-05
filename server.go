@@ -167,6 +167,7 @@ func main() {
 
 	// If in jail, restart to be able to potentially read and write the Let's Encrypt certificates.
 	if isJailed && terminateIfCertificateExpires { // We don't need `&& runtime.GOOS == "linux"`, because isJailed can only be true under linux.
+		// Set a timer to durationBeforeCertificateExpiryRefresh before the first SSL certificate expires.
 		timer := time.NewTimer(shortestDuration)
 		log.Printf("Set timer to expire in %s.\n", shortestDuration)
 
@@ -232,4 +233,4 @@ func terminateServer(servers ...*http.Server) {
 }
 
 // TODO: Test if Let's Encrypt CRASHES, if it is unable to store its certificates to the file system.
-// TODO: Also store the self signed certificates for the allowed self signed domains.
+// TODO: Maybe also store the self signed certificates for the allowed self signed domains.

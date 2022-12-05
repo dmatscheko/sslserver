@@ -24,7 +24,7 @@ var domainsSelfSigned []string = []string{"localhost", "127.0.0.1"}
 var terminateIfCertificateExpires bool = false
 
 // Renew self signed certificates, if they expire within this duration.
-var durationToCertificateExpiryRefresh time.Duration = 12 * time.Hour
+var durationToCertificateExpiryRefresh time.Duration = 48 * time.Hour
 
 // Serve files if they are not cached in memory.
 var serveNonCachedFiles bool = false
@@ -87,4 +87,10 @@ func readConfig() {
 	durationToCertificateExpiryRefresh = config.DurationToCertificateExpiryRefresh
 	serveNonCachedFiles = config.ServeNonCachedFiles
 	cacheFileSizeLimit = config.CacheFileSizeLimit
+
+	// Sanity checks.
+	if durationToCertificateExpiryRefresh < time.Hour {
+		durationToCertificateExpiryRefresh = time.Hour
+		log.Println("Warning: duration-to-certificate-expiry-refresh is too low. Setting it to one hour.")
+	}
 }

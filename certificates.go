@@ -70,8 +70,10 @@ func initCertificates() time.Duration {
 
 		// Get the expiration time of the SSL certificate.
 		expiration := cert.Leaf.NotAfter
-		// Set a timer to durationBeforeCertificateExpiryRefresh (duration) before the SSL certificate expires.
-		duration := expiration.Sub(time.Now().Add(durationToCertificateExpiryRefresh * time.Hour))
+		// Convert it into the duration from now.
+		duration := time.Until(expiration)
+		// Substract the durationToCertificateExpiryRefresh.
+		duration = duration - durationToCertificateExpiryRefresh
 
 		if shortestDuration > duration {
 			shortestDuration = duration
@@ -121,7 +123,7 @@ func getTLSCert(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
 			Organization: []string{"Acme Co"},
 		},
 		NotBefore:             time.Now(),
-		NotAfter:              time.Now().Add(14 * 48 * time.Hour), // valid for two weeks.
+		NotAfter:              time.Now().Add(durationToCertificateExpiryRefresh + 14*48*time.Hour), // valid for two weeks plus durationToCertificateExpiryRefresh.
 		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		BasicConstraintsValid: true,
@@ -182,13 +184,17 @@ func getCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
 			certCache[name].Leaf = parsedCert
 		}
 
-		// Check if expired with durationBeforeCertificateExpiryRefresh (duration) time buffer.
-		if time.Now().After(certCache[name].Leaf.NotAfter.Add(-durationToCertificateExpiryRefresh * time.Hour)) {
-			// Clear certCache from expired certificate, so that it can be checked faster.
-			certCache = nil
+		// Get the expiration time of the SSL certificate.
+		expiration := certCache[name].Leaf.NotAfter
+		// Convert it into the duration from now.
+		duration := time.Until(expiration)
+		// Check if expired with durationBeforeCertificateExpiryRefresh time buffer.
+		if duration < durationToCertificateExpiryRefresh {
+			// Clear certCache[name] from the expired certificate, so that it can be checked faster.
+			certCache[name] = nil
 			log.Printf("Self signed certificate expires within a duration of %s.\n", durationToCertificateExpiryRefresh)
 		} else {
-			// Certificate is valid with durationBeforeCertificateExpiryRefresh (duration) time buffer.
+			// Certificate is valid with durationBeforeCertificateExpiryRefresh time buffer.
 			return certCache[name], nil
 		}
 	}
