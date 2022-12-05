@@ -42,4 +42,11 @@ or (on Windows)
 
 ## Configuration
 
-At the moment, you have to configure the server in the `config.go` and rebuild.
+At startup a `config.yml` is automatically created. Those are the values that can be changed:
+
+* `domains-lets-encrypt`: This is a white list of domains that are allowed to fetch a Let's Encrypt certificate. The default value is `- example.com`.
+* `domains-self-signed`: This is a white list of domains for which self-signed certificates are allowed. The domains for Let's Encrypt are automatically added to this list, but you can include additional domains that are only allowed for self-signed certificates. The default value is `- localhost`, `- 127.0.0.1`.
+* `terminate-if-certificate-expires`: This determines whether the program should exit when a certificate is about to expire. If set to true, this allows caching the certificates to the hard disk after the next start. Note that an external script will have to restart the server, and the server will only be restarted on Linux, because it doesn't make sense to do so on Windows. The default value is `false`.
+* `duration-to-certificate-expiry-refresh`: This specifies how long before a certificate expires that self-signed certificates should be renewed. The default value is `48h0m0s` (48 hours).
+* `serve-non-cached-files`: This determines whether to serve files if they are not cached in memory. The default value is `false`.
+* `cache-file-size-limit`: This specifies the maximum size for files that are cached in memory. If files are not cached, and the server is jailed, it might be impossible to access the files. The default value is `10485760` (10 MB).
