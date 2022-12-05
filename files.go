@@ -53,9 +53,45 @@ func serveFiles(w http.ResponseWriter, r *http.Request) {
 	// Check if the file has already been read and cached.
 	data, ok := fileCache[path]
 	if !ok {
-		log.Println("File not found:", path)
-		http.NotFound(w, r)
-		return
+		if !serveNonCachedFiles {
+			log.Println("File not found:", path)
+			http.NotFound(w, r)
+			return
+		}
+
+		// The file has not been cached, so read it from disk.
+		file, err := os.Open(path)
+		if err != nil {
+			log.Println("File not found:", path)
+			http.NotFound(w, r)
+			return
+		}
+		defer file.Close()
+
+		// Get the file info.
+		info, err := file.Stat()
+		if err != nil {
+			log.Println("File not found:", path)
+			http.NotFound(w, r)
+			return
+		}
+
+		// Get the file size in bytes.
+		size := info.Size()
+		if size > cacheFileSizeLimit {
+			// Serving large file contents to the HTTP response.
+			http.ServeContent(w, r, path, time.Time{}, file)
+			return
+		}
+
+		data, err = ioutil.ReadAll(file)
+		if err != nil {
+			log.Println("Could not read file:", path)
+			http.NotFound(w, r)
+		}
+
+		// Cache the file contents in memory.
+		fileCache[path] = data
 	}
 
 	// Write the file contents to the HTTP response.

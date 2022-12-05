@@ -12,6 +12,9 @@ import (
 )
 
 func main() {
+	// Read config file.
+	readConfig()
+
 	// Initialize (fill) the white list and the cert cache.
 	shortestDuration := initCertificates()
 

@@ -18,3 +18,4 @@
 static/*
 certcache/*
 sslserver
+config.yml
