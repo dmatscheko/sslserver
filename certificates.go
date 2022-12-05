@@ -24,9 +24,10 @@ var certCache map[string]*tls.Certificate = nil
 
 // Create a new autocert manager.
 var m = &autocert.Manager{
-	Cache:      autocert.DirCache("certcache"),
-	Prompt:     autocert.AcceptTOS,
-	HostPolicy: autocert.HostWhitelist(domainsLetsEncrypt...),
+	Cache:       autocert.DirCache("certcache"),
+	Prompt:      autocert.AcceptTOS,
+	HostPolicy:  autocert.HostWhitelist(domainsLetsEncrypt...),
+	RenewBefore: durationToCertificateExpiryRefresh + 24*time.Hour, // This way, RenewBefore is always longer than the certificate expiry timeout when the server terminates.
 }
 
 // initCertificates initializes the white list of domains for self signed certificates and also the cache for the self signed certificates.
@@ -195,6 +196,7 @@ func getCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
 	// Try to fetch a certificate from Let's Encrypt.
 	cert, err := m.GetCertificate(hello)
 	if err == nil {
+		log.Println("Got Let's Encrypt certificate for:", name)
 		// Return the certificate if successful.
 		return cert, nil
 	}

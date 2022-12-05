@@ -33,6 +33,12 @@ func main() {
 	var wgServerClosed sync.WaitGroup
 	wgServerClosed.Add(2)
 
+	// Create a wait group with a count of 1.
+	// This indicates that we are waiting for one signal.
+	// The signal will be sent after the servers is jailed.
+	var wgJailed sync.WaitGroup
+	wgJailed.Add(1)
+
 	//
 	// ========
 	// HTTP SERVER
@@ -72,6 +78,10 @@ func main() {
 
 		// Send a signal on the wait group when the listener is ready.
 		wgBindDone.Done()
+
+		// Wait for the wait group to reach zero.
+		// This will happen when the server has been jailed.
+		wgJailed.Wait()
 
 		// Serve HTTP connections on the listener.
 		err = httpServer.Serve(ln)
@@ -125,6 +135,10 @@ func main() {
 		// Send a signal on the wait group when the listener is ready.
 		wgBindDone.Done()
 
+		// Wait for the wait group to reach zero.
+		// This will happen when the server has been jailed.
+		wgJailed.Wait()
+
 		// Serve TLS connections on the listener.
 		err = httpsServer.ServeTLS(ln, "", "")
 		if err != nil {
@@ -148,6 +162,9 @@ func main() {
 	// Drop privileges and jail process if running on Linux.
 	isJailed := Jail()
 
+	// Send a signal on the wait group when the server has been jailed.
+	wgJailed.Done()
+
 	// If in jail, restart to be able to potentially read and write the Let's Encrypt certificates.
 	if isJailed && terminateIfCertificateExpires { // We don't need `&& runtime.GOOS == "linux"`, because isJailed can only be true under linux.
 		timer := time.NewTimer(shortestDuration)
@@ -160,6 +177,8 @@ func main() {
 
 		// Close both server.
 		terminateServer(httpServer, httpsServer)
+	} else {
+		log.Println("Serving files ...")
 	}
 
 	// Wait for the wait group to reach zero.
