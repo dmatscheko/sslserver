@@ -22,7 +22,7 @@ import (
 // Jail drops the privileges of the process and restricts it to the specified
 // directory. It returns true to indicate that the program is now in a jail.
 func Jail() bool {
-	dirPath := "./jail"
+	dirName := "./jail"
 
 	// Look up the user ID of the "nobody" user.
 	var uid int
@@ -37,17 +37,25 @@ func Jail() bool {
 		gid = user.GID
 	}
 
+	// Check if the directory exists.
+	if _, err := os.Stat(dirName); os.IsNotExist(err) {
+		// Create the directory if it doesn't exist.
+		if err := os.Mkdir(dirName, 0100); err != nil {
+			log.Fatal(err)
+		}
+	}
+
 	// Change the directory permissions to only "x".
-	err := os.Chmod(dirPath, 0100)
+	err := os.Chmod(dirName, 0100)
 	if err != nil {
 		log.Fatal(err)
 	}
-	// Change the working directory to dirPath.
-	err = os.Chdir(dirPath)
+	// Change the working directory to dirName.
+	err = os.Chdir(dirName)
 	if err != nil {
 		log.Fatal("Chdir: ", err)
 	}
-	// Change the root directory to dirPath.
+	// Change the root directory to dirName.
 	err = syscall.Chroot(".")
 	if err != nil {
 		log.Fatal("Chroot: ", err)
@@ -77,6 +85,9 @@ func Jail() bool {
 	if cf, _ := now.Cf(empty); cf != 0 {
 		log.Fatalf("failed to fully drop privilege: have=%q, wanted=%q", now, empty)
 	}
+
+	// Try not to have too many things in memory.
+	os.Clearenv()
 
 	// Return true because the process is now in a jail.
 	return true
