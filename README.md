@@ -50,3 +50,11 @@ At startup a `config.yml` is automatically created. Those are the values that ca
 * `duration-to-certificate-expiry-refresh`: This specifies how long before a certificate expires that self-signed certificates should be renewed. The default value is `48h0m0s` (48 hours).
 * `serve-non-cached-files`: This determines whether to serve files if they are not cached in memory. The default value is `false`.
 * `cache-file-size-limit`: This specifies the maximum size for files that are cached in memory. If files are not cached, and the server is jailed, it might be impossible to access the files. The default value is `10485760` (10 MB).
+
+## TODO
+
+* Set the correct caching headers.
+* Implement security relevant HTTP headers.
+* Test the behavior of Let's Encrypt when it is unable to store its certificates to the file system. Maybe it crashes.
+* Consider also storing the self-signed certificates.
+* Implement a way to restart the application from within the application itself.

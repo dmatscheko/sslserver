@@ -231,6 +231,3 @@ func terminateServer(servers ...*http.Server) {
 	// This will happen when all servers have shut down or the timeout has been reached.
 	wgShutdown.Wait()
 }
-
-// TODO: Test if Let's Encrypt CRASHES, if it is unable to store its certificates to the file system.
-// TODO: Maybe also store the self signed certificates for the allowed self signed domains.
