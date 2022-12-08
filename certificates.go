@@ -26,18 +26,18 @@ var certCache map[string]*tls.Certificate = nil
 var m = &autocert.Manager{
 	Cache:       autocert.DirCache("certcache"),
 	Prompt:      autocert.AcceptTOS,
-	HostPolicy:  autocert.HostWhitelist(domainsLetsEncrypt...),
-	RenewBefore: durationToCertificateExpiryRefresh + 24*time.Hour, // This way, RenewBefore is always longer than the certificate expiry timeout when the server terminates.
+	HostPolicy:  autocert.HostWhitelist(config.LetsEncryptDomains...),
+	RenewBefore: config.CertificateExpiryRefreshThreshold + 24*time.Hour, // This way, RenewBefore is always longer than the certificate expiry timeout when the server terminates.
 }
 
 // initCertificates initializes the white list of domains for self signed certificates and also the cache for the self signed certificates.
 func initCertificates() time.Duration {
 	// Add the domains for Let's Encrypt to the domains for which self signed certificates can be created.
-	domainsSelfSigned = append(domainsSelfSigned, domainsLetsEncrypt...)
+	config.SelfSignedDomains = append(config.SelfSignedDomains, config.LetsEncryptDomains...)
 
 	// Initialize the white list of domains for self signed certificates.
-	allowedDomainsSelfSignedWhiteList = make(map[string]bool, len(domainsSelfSigned))
-	for _, h := range domainsSelfSigned {
+	allowedDomainsSelfSignedWhiteList = make(map[string]bool, len(config.SelfSignedDomains))
+	for _, h := range config.SelfSignedDomains {
 		if h, err := idna.Lookup.ToASCII(h); err == nil {
 			allowedDomainsSelfSignedWhiteList[h] = true
 		}
@@ -49,7 +49,7 @@ func initCertificates() time.Duration {
 	// Initialize certificates before going to jail.
 	var shortestDuration time.Duration = 10 * 365 * 24 * time.Hour // Initial duration is 10 years which should be longer than any certificate expiration.
 	log.Println("Checking certificates...")
-	for _, serverName := range domainsSelfSigned {
+	for _, serverName := range config.SelfSignedDomains {
 		cert, err := getCertificate(&tls.ClientHelloInfo{ServerName: serverName})
 		if err != nil {
 			log.Println("Error when initializing certificate for:", serverName, "\nError:", err)
@@ -73,7 +73,7 @@ func initCertificates() time.Duration {
 		// Convert it into the duration from now.
 		duration := time.Until(expiration)
 		// Substract the durationToCertificateExpiryRefresh.
-		duration = duration - durationToCertificateExpiryRefresh
+		duration = duration - config.CertificateExpiryRefreshThreshold
 
 		if shortestDuration > duration {
 			shortestDuration = duration
@@ -123,7 +123,7 @@ func getTLSCert(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
 			Organization: []string{"Acme Co"},
 		},
 		NotBefore:             time.Now(),
-		NotAfter:              time.Now().Add(durationToCertificateExpiryRefresh + 14*48*time.Hour), // valid for two weeks plus durationToCertificateExpiryRefresh.
+		NotAfter:              time.Now().Add(config.CertificateExpiryRefreshThreshold + 14*24*time.Hour), // valid for two weeks plus durationToCertificateExpiryRefresh.
 		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		BasicConstraintsValid: true,
@@ -189,10 +189,10 @@ func getCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
 		// Convert it into the duration from now.
 		duration := time.Until(expiration)
 		// Check if expired with durationBeforeCertificateExpiryRefresh time buffer.
-		if duration < durationToCertificateExpiryRefresh {
+		if duration < config.CertificateExpiryRefreshThreshold {
 			// Clear certCache[name] from the expired certificate, so that it can be checked faster.
 			certCache[name] = nil
-			log.Printf("Self signed certificate expires within a duration of %s.\n", durationToCertificateExpiryRefresh)
+			log.Printf("Self signed certificate expires within a duration of %s.\n", config.CertificateExpiryRefreshThreshold)
 		} else {
 			// Certificate is valid with durationBeforeCertificateExpiryRefresh time buffer.
 			return certCache[name], nil

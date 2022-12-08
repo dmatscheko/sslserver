@@ -53,7 +53,7 @@ func serveFiles(w http.ResponseWriter, r *http.Request) {
 	// Check if the file has already been read and cached.
 	data, ok := fileCache[path]
 	if !ok {
-		if !serveNonCachedFiles {
+		if !config.ServeFilesNotInCache {
 			log.Println("File not found:", path)
 			http.NotFound(w, r)
 			return
@@ -78,7 +78,7 @@ func serveFiles(w http.ResponseWriter, r *http.Request) {
 
 		// Get the file size in bytes.
 		size := info.Size()
-		if size > cacheFileSizeLimit {
+		if size > config.MaxCacheableFileSize {
 			// Serving large file contents to the HTTP response.
 			http.ServeContent(w, r, path, time.Time{}, file)
 			return

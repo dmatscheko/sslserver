@@ -8,38 +8,41 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Let's Encrypt white list.
-// Those domains are allowed to fetch a Let's Encrypt certificate.
-var domainsLetsEncrypt []string = []string{"example.com"}
+type ServerConfig struct {
+	// Let's Encrypt white list.
+	// These domains are allowed to fetch a Let's Encrypt certificate.
+	LetsEncryptDomains []string `yaml:"lets-encrypt-domains"`
 
-// Self signed certificates white list.
-// The domains for Let's Encrypt are automatically added to this list,
-// but you can include domains that are only allowd for self signed certificates.
-var domainsSelfSigned []string = []string{"localhost", "127.0.0.1"}
+	// Self signed certificates white list.
+	// The domains for Let's Encrypt are automatically added to this list,
+	// but you can include domains that are only allowed for self signed certificates.
+	SelfSignedDomains []string `yaml:"self-signed-domains"`
 
-// Set to true if the program should exit when a certificate is about to expire.
-// This allows to cache the certificates to the hard disk after the next start.
-// Note 1: An external script has to restart the server!
-// Note 2: The server will only restart on Linux, because it makes no sense on Windows.
-var terminateIfCertificateExpires bool = false
+	// Set to true if the program should exit when a certificate is about to expire.
+	// This allows to cache the certificates to the hard disk after the next start.
+	// Note 1: An external script has to restart the server!
+	// Note 2: The server will only restart on Linux, because it makes no sense on Windows.
+	TerminateOnCertificateExpiry bool `yaml:"terminate-on-certificate-expiry"`
 
-// Renew self signed certificates, if they expire within this duration.
-var durationToCertificateExpiryRefresh time.Duration = 48 * time.Hour
+	// Renew self signed certificates, if they expire within this duration.
+	CertificateExpiryRefreshThreshold time.Duration `yaml:"certificate-expiry-refresh-threshold"`
 
-// Serve files if they are not cached in memory.
-var serveNonCachedFiles bool = false
+	// Serve files if they are not cached in memory.
+	ServeFilesNotInCache bool `yaml:"serve-files-not-in-cache"`
 
-// Maximum size for files that are cached in memory.
-// If files are not cached, and the server jails itself, it might be impossible to access the files.
-var cacheFileSizeLimit int64 = 10 * 1024 * 1024
+	// Maximum size for files that are cached in memory.
+	// If files are not cached, and the server jails itself, it might be impossible to access the files.
+	MaxCacheableFileSize int64 `yaml:"max-cacheable-file-size"`
+}
 
-type Config struct {
-	DomainsLetsEncrypt                 []string      `yaml:"domains-lets-encrypt"`
-	DomainsSelfSigned                  []string      `yaml:"domains-self-signed"`
-	TerminateIfCertificateExpires      bool          `yaml:"terminate-if-certificate-expires"`
-	DurationToCertificateExpiryRefresh time.Duration `yaml:"duration-to-certificate-expiry-refresh"`
-	ServeNonCachedFiles                bool          `yaml:"serve-non-cached-files"`
-	CacheFileSizeLimit                 int64         `yaml:"cache-file-size-limit"`
+// Set the default values of the config variables.
+var config = ServerConfig{
+	LetsEncryptDomains:                []string{"example.com"},
+	SelfSignedDomains:                 []string{"localhost", "127.0.0.1"},
+	TerminateOnCertificateExpiry:      false,
+	CertificateExpiryRefreshThreshold: 48 * time.Hour,
+	ServeFilesNotInCache:              false,
+	MaxCacheableFileSize:              10 * 1024 * 1024,
 }
 
 func readConfig() {
@@ -48,14 +51,6 @@ func readConfig() {
 	if err != nil {
 		// If the file does not exist, create it.
 		log.Println("Configuration file config.yaml does not exist. Creating the file...")
-
-		var config Config
-		config.DomainsLetsEncrypt = domainsLetsEncrypt
-		config.DomainsSelfSigned = domainsSelfSigned
-		config.TerminateIfCertificateExpires = terminateIfCertificateExpires
-		config.DurationToCertificateExpiryRefresh = durationToCertificateExpiryRefresh
-		config.ServeNonCachedFiles = serveNonCachedFiles
-		config.CacheFileSizeLimit = cacheFileSizeLimit
 
 		data, err := yaml.Marshal(config)
 		if err != nil {
@@ -73,24 +68,15 @@ func readConfig() {
 	}
 
 	// Unmarshal the config data into a Config struct.
-	var config Config
 	err = yaml.Unmarshal(data, &config)
 	if err != nil {
 		log.Println("config.yaml seems to have invalid syntax or entries.")
 		return
 	}
 
-	// Set the values of the variables from the config struct.
-	domainsLetsEncrypt = config.DomainsLetsEncrypt
-	domainsSelfSigned = config.DomainsSelfSigned
-	terminateIfCertificateExpires = config.TerminateIfCertificateExpires
-	durationToCertificateExpiryRefresh = config.DurationToCertificateExpiryRefresh
-	serveNonCachedFiles = config.ServeNonCachedFiles
-	cacheFileSizeLimit = config.CacheFileSizeLimit
-
 	// Sanity checks.
-	if durationToCertificateExpiryRefresh < time.Hour {
-		durationToCertificateExpiryRefresh = time.Hour
+	if config.CertificateExpiryRefreshThreshold < time.Hour {
+		config.CertificateExpiryRefreshThreshold = time.Hour
 		log.Println("Warning: duration-to-certificate-expiry-refresh is too low. Setting it to one hour.")
 	}
 }

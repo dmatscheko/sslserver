@@ -166,7 +166,7 @@ func main() {
 	wgJailed.Done()
 
 	// If in jail, restart to be able to potentially read and write the Let's Encrypt certificates.
-	if isJailed && terminateIfCertificateExpires { // We don't need `&& runtime.GOOS == "linux"`, because isJailed can only be true under linux.
+	if isJailed && config.TerminateOnCertificateExpiry { // We don't need `&& runtime.GOOS == "linux"`, because isJailed can only be true under linux.
 		// Set a timer to durationBeforeCertificateExpiryRefresh before the first SSL certificate expires.
 		timer := time.NewTimer(shortestDuration)
 		log.Printf("Set timer to expire in %s.\n", shortestDuration)
