@@ -58,17 +58,10 @@ func main() {
 
 	// Start the HTTP server in a separate goroutine.
 	go func() {
-		log.Println("Starting HTTP server on port 80.")
-
-		// Get the address of the server.
-		addr := httpServer.Addr
-		// If the address is not set, use the default ":http".
-		if addr == "" {
-			addr = ":http"
-		}
+		log.Println("Starting HTTP server on", httpServer.Addr)
 
 		// Listen on the specified address.
-		ln, err := net.Listen("tcp", addr)
+		ln, err := net.Listen("tcp", httpServer.Addr)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -114,17 +107,10 @@ func main() {
 
 	// Start the HTTPS server in a separate goroutine.
 	go func() {
-		log.Println("Starting HTTPS server on port 443.")
-
-		// Get the address of the server.
-		addr := httpsServer.Addr
-		// If the address is not set, use the default ":https".
-		if addr == "" {
-			addr = ":https"
-		}
+		log.Println("Starting HTTPS server on", httpsServer.Addr)
 
 		// Listen on the specified address.
-		ln, err := net.Listen("tcp", addr)
+		ln, err := net.Listen("tcp", httpsServer.Addr)
 		if err != nil {
 			log.Fatal(err)
 		}

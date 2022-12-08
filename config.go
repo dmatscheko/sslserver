@@ -3,6 +3,7 @@ package main
 import (
 	"io/ioutil"
 	"log"
+	"net"
 	"reflect"
 	"time"
 
@@ -117,6 +118,27 @@ func readConfig() {
 	if config.CertificateExpiryRefreshThreshold < time.Hour {
 		config.CertificateExpiryRefreshThreshold = time.Hour
 		log.Println("Warning: duration-to-certificate-expiry-refresh is too low. Setting it to one hour.")
+	}
+
+	if config.HttpAddr == "" {
+		config.HttpAddr = ":http"
+		log.Println("Warning: http-addr is empty. Setting it to :http.")
+	}
+	if config.HttpsAddr == "" {
+		config.HttpsAddr = ":https"
+		log.Println("Warning: https-addr is empty. Setting it to :https.")
+	}
+
+	// Convert the service names to port numbers.
+	_, err = net.LookupPort("tcp", config.HttpAddr)
+	if err != nil {
+		config.HttpAddr = ":http"
+		log.Println("Warning: http-addr is invalid. Setting it to :http.")
+	}
+	_, err = net.LookupPort("tcp", config.HttpsAddr)
+	if err != nil {
+		config.HttpsAddr = ":https"
+		log.Println("Warning: https-addr is invalid. Setting it to :https.")
 	}
 
 	printConfig(config)
