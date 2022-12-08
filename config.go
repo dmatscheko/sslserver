@@ -3,12 +3,16 @@ package main
 import (
 	"io/ioutil"
 	"log"
+	"reflect"
 	"time"
 
 	"gopkg.in/yaml.v3"
 )
 
 type ServerConfig struct {
+	// The base directory (aka web root) to serve static files from.
+	BaseDirectory string `yaml:"base-directory"`
+
 	// Let's Encrypt white list.
 	// These domains are allowed to fetch a Let's Encrypt certificate.
 	LetsEncryptDomains []string `yaml:"lets-encrypt-domains"`
@@ -33,16 +37,51 @@ type ServerConfig struct {
 	// Maximum size for files that are cached in memory.
 	// If files are not cached, and the server jails itself, it might be impossible to access the files.
 	MaxCacheableFileSize int64 `yaml:"max-cacheable-file-size"`
+
+	// Maximum duration to wait for a request to complete.
+	MaxRequestTimeout time.Duration `yaml:"max-request-timeout"`
+
+	// Maximum duration to wait for a response to complete.
+	MaxResponseTimeout time.Duration `yaml:"max-response-timeout"`
+
+	// Whether to jail the process or not.
+	// If you jail the process, no file can exceed MaxCacheableFileSize.
+	JailProcess bool `yaml:"jail-process"`
+
+	// The HTTP address to bind the server to.
+	HttpAddr string `yaml:"http-addr"`
+
+	// The HTTPS address to bind the server to.
+	HttpsAddr string `yaml:"https-addr"`
+
+	/*
+		TODO: Maybe:
+
+		The HTTPS port where to redirect HTTP connections to, because there can be a proxy in front
+		The maximum number of connections the server should allow at once
+		The maximum request body size the server should allow
+		The server's TLS/SSL certificate and key files
+		The level of access logging to enable
+		The location of the server's access and error logs
+		The type of error handling to use (e.g. detailed errors or friendly error pages)
+	*/
+
 }
 
 // Set the default values of the config variables.
 var config = ServerConfig{
+	BaseDirectory:                     "static",
 	LetsEncryptDomains:                []string{"example.com"},
 	SelfSignedDomains:                 []string{"localhost", "127.0.0.1"},
 	TerminateOnCertificateExpiry:      false,
 	CertificateExpiryRefreshThreshold: 48 * time.Hour,
 	ServeFilesNotInCache:              false,
 	MaxCacheableFileSize:              10 * 1024 * 1024,
+	MaxRequestTimeout:                 15 * time.Second,
+	MaxResponseTimeout:                60 * time.Second,
+	JailProcess:                       true,
+	HttpAddr:                          ":http",
+	HttpsAddr:                         ":https",
 }
 
 func readConfig() {
@@ -78,5 +117,24 @@ func readConfig() {
 	if config.CertificateExpiryRefreshThreshold < time.Hour {
 		config.CertificateExpiryRefreshThreshold = time.Hour
 		log.Println("Warning: duration-to-certificate-expiry-refresh is too low. Setting it to one hour.")
+	}
+
+	printConfig(config)
+}
+
+func printConfig(config ServerConfig) {
+	log.Println("Config:")
+
+	// Get the type of the config variable.
+	t := reflect.TypeOf(config)
+
+	// Iterate over all the fields of the config variable.
+	for i := 0; i < t.NumField(); i++ {
+		// Get the field and its yaml tag.
+		field := t.Field(i)
+		yamlTag := field.Tag.Get("yaml")
+
+		// Print the field name and its value.
+		log.Println("  "+yamlTag+":", reflect.ValueOf(config).Field(i).Interface())
 	}
 }

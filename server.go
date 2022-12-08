@@ -19,7 +19,7 @@ func main() {
 	shortestDuration := initCertificates()
 
 	// Initialize (fill) the file cache.
-	fillCache("static")
+	fillCache(config.BaseDirectory)
 
 	// Create a wait group with a count of 2.
 	// This indicates that we are waiting for two signals.
@@ -47,12 +47,12 @@ func main() {
 
 	// Create an HTTP server that redirects all requests to HTTPS.
 	httpServer := &http.Server{
-		Addr:         ":80",
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
+		Addr:         config.HttpAddr,
+		ReadTimeout:  config.MaxRequestTimeout,
+		WriteTimeout: config.MaxResponseTimeout,
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Redirect the request to HTTPS.
-			http.Redirect(w, r, "https://"+r.Host+r.URL.Path, http.StatusFound)
+			http.Redirect(w, r, "https://"+r.Host+r.URL.Path, http.StatusFound) // TODO: get config.HttpsAddr and redirect to this port. Or better, create a config variable for this, because there can be a proxy in front.
 		}),
 	}
 
@@ -101,9 +101,9 @@ func main() {
 
 	// Create an HTTPS server that serves files from the "static" directory.
 	httpsServer := &http.Server{
-		Addr:         ":443",
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
+		Addr:         config.HttpsAddr,
+		ReadTimeout:  config.MaxRequestTimeout,
+		WriteTimeout: config.MaxResponseTimeout,
 		TLSConfig: &tls.Config{
 			// Set the GetCertificate callback for the TLS config to a function
 			// that tries to fetch a certificate.
@@ -159,8 +159,11 @@ func main() {
 	// ========
 	//
 
-	// Drop privileges and jail process if running on Linux.
-	isJailed := Jail()
+	isJailed := false
+	if config.JailProcess {
+		// Drop privileges and jail process if running on Linux.
+		isJailed = Jail()
+	}
 
 	// Send a signal on the wait group when the server has been jailed.
 	wgJailed.Done()

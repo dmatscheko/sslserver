@@ -60,7 +60,8 @@ func serveFiles(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// The file has not been cached, so read it from disk.
-		file, err := os.Open(path)
+		pathOnFileSystem := filepath.Join(config.BaseDirectory, path)
+		file, err := os.Open(pathOnFileSystem)
 		if err != nil {
 			log.Println("File not found:", path)
 			http.NotFound(w, r)
