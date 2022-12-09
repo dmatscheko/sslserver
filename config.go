@@ -164,7 +164,7 @@ func readConfig() {
 	config.WebRootDirectory = filepath.Clean(config.WebRootDirectory)
 	if fileInfo, err := os.Stat(config.WebRootDirectory); os.IsNotExist(err) {
 		// Create the directory if it doesn't exist.
-		if err := os.Mkdir(config.WebRootDirectory, 0555); err != nil {
+		if err := os.MkdirAll(config.WebRootDirectory, 0555); err != nil {
 			log.Fatal(err)
 		}
 	} else if err != nil || !fileInfo.Mode().IsDir() {
@@ -176,13 +176,25 @@ func readConfig() {
 	config.JailDirectory = filepath.Clean(config.JailDirectory)
 	if fileInfo, err := os.Stat(config.JailDirectory); os.IsNotExist(err) {
 		// Create the directory if it doesn't exist.
-		if err := os.Mkdir(config.JailDirectory, 0555); err != nil {
+		if err := os.MkdirAll(config.JailDirectory, 0555); err != nil {
 			log.Fatal(err)
 		}
 	} else if err != nil || !fileInfo.Mode().IsDir() {
 		// There is an error or it is not a directory.
 		// Set it to "jail" and hope for the best.
 		config.JailDirectory = "jail"
+	}
+
+	config.CertificateCacheDirectory = filepath.Clean(config.CertificateCacheDirectory)
+	if fileInfo, err := os.Stat(config.CertificateCacheDirectory); os.IsNotExist(err) {
+		// Create the directory if it doesn't exist.
+		if err := os.MkdirAll(config.CertificateCacheDirectory, 0744); err != nil { // The server has to be able to write certificates into this directory. It should not be inside the jail.
+			log.Fatal(err)
+		}
+	} else if err != nil || !fileInfo.Mode().IsDir() {
+		// There is an error or it is not a directory.
+		// Set it to "certcache" and hope for the best.
+		config.JailDirectory = "certcache"
 	}
 
 	printConfig(config)

@@ -42,7 +42,7 @@ func Jail(dir string) bool {
 	// Check if the directory exists.
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
 		// Create the directory if it doesn't exist.
-		if err := os.Mkdir(dir, 0100); err != nil {
+		if err := os.MkdirAll(dir, 0555); err != nil {
 			log.Fatal(err)
 		}
 	}
