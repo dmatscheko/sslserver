@@ -11,8 +11,14 @@ import (
 )
 
 type ServerConfig struct {
-	// The base directory (aka web root) to serve static files from.
+	// The base directory (the web root) to serve static files from.
 	BaseDirectory string `yaml:"base-directory"`
+
+	// The HTTP address to bind the server to.
+	HttpAddr string `yaml:"http-addr"`
+
+	// The HTTPS address to bind the server to.
+	HttpsAddr string `yaml:"https-addr"`
 
 	// Let's Encrypt white list.
 	// These domains are allowed to fetch a Let's Encrypt certificate.
@@ -29,8 +35,14 @@ type ServerConfig struct {
 	// Note 2: The server will only restart on Linux, because it makes no sense on Windows.
 	TerminateOnCertificateExpiry bool `yaml:"terminate-on-certificate-expiry"`
 
-	// Renew self signed certificates, if they expire within this duration.
+	// Renew certificates, if they expire within this duration.
 	CertificateExpiryRefreshThreshold time.Duration `yaml:"certificate-expiry-refresh-threshold"`
+
+	// Maximum duration to wait for a request to complete.
+	MaxRequestTimeout time.Duration `yaml:"max-request-timeout"`
+
+	// Maximum duration to wait for a response to complete.
+	MaxResponseTimeout time.Duration `yaml:"max-response-timeout"`
 
 	// Serve files if they are not cached in memory.
 	ServeFilesNotInCache bool `yaml:"serve-files-not-in-cache"`
@@ -39,21 +51,9 @@ type ServerConfig struct {
 	// If files are not cached, and the server jails itself, it might be impossible to access the files.
 	MaxCacheableFileSize int64 `yaml:"max-cacheable-file-size"`
 
-	// Maximum duration to wait for a request to complete.
-	MaxRequestTimeout time.Duration `yaml:"max-request-timeout"`
-
-	// Maximum duration to wait for a response to complete.
-	MaxResponseTimeout time.Duration `yaml:"max-response-timeout"`
-
 	// Whether to jail the process or not.
 	// If you jail the process, no file can exceed MaxCacheableFileSize.
 	JailProcess bool `yaml:"jail-process"`
-
-	// The HTTP address to bind the server to.
-	HttpAddr string `yaml:"http-addr"`
-
-	// The HTTPS address to bind the server to.
-	HttpsAddr string `yaml:"https-addr"`
 
 	/*
 		TODO: Maybe:
@@ -72,17 +72,17 @@ type ServerConfig struct {
 // Set the default values of the config variables.
 var config = ServerConfig{
 	BaseDirectory:                     "static",
+	HttpAddr:                          ":http",
+	HttpsAddr:                         ":https",
 	LetsEncryptDomains:                []string{"example.com"},
 	SelfSignedDomains:                 []string{"localhost", "127.0.0.1"},
 	TerminateOnCertificateExpiry:      false,
 	CertificateExpiryRefreshThreshold: 48 * time.Hour,
-	ServeFilesNotInCache:              false,
-	MaxCacheableFileSize:              10 * 1024 * 1024,
 	MaxRequestTimeout:                 15 * time.Second,
 	MaxResponseTimeout:                60 * time.Second,
+	ServeFilesNotInCache:              false,
+	MaxCacheableFileSize:              10 * 1024 * 1024,
 	JailProcess:                       true,
-	HttpAddr:                          ":http",
-	HttpsAddr:                         ":https",
 }
 
 func readConfig() {
@@ -114,31 +114,26 @@ func readConfig() {
 		return
 	}
 
+	// Convert the service names to port numbers.
+	addr, err := net.ResolveTCPAddr("tcp", config.HttpAddr)
+	if err != nil {
+		config.HttpAddr = ":80"
+		log.Println("Warning: http-addr is invalid. Setting it to :80.")
+	} else {
+		config.HttpAddr = addr.String()
+	}
+	addr, err = net.ResolveTCPAddr("tcp", config.HttpsAddr)
+	if err != nil {
+		config.HttpsAddr = ":443"
+		log.Println("Warning: https-addr is invalid. Setting it to :443.")
+	} else {
+		config.HttpsAddr = addr.String()
+	}
+
 	// Sanity checks.
 	if config.CertificateExpiryRefreshThreshold < time.Hour {
 		config.CertificateExpiryRefreshThreshold = time.Hour
 		log.Println("Warning: duration-to-certificate-expiry-refresh is too low. Setting it to one hour.")
-	}
-
-	if config.HttpAddr == "" {
-		config.HttpAddr = ":http"
-		log.Println("Warning: http-addr is empty. Setting it to :http.")
-	}
-	if config.HttpsAddr == "" {
-		config.HttpsAddr = ":https"
-		log.Println("Warning: https-addr is empty. Setting it to :https.")
-	}
-
-	// Convert the service names to port numbers.
-	_, err = net.LookupPort("tcp", config.HttpAddr)
-	if err != nil {
-		config.HttpAddr = ":http"
-		log.Println("Warning: http-addr is invalid. Setting it to :http.")
-	}
-	_, err = net.LookupPort("tcp", config.HttpsAddr)
-	if err != nil {
-		config.HttpsAddr = ":https"
-		log.Println("Warning: https-addr is invalid. Setting it to :https.")
 	}
 
 	printConfig(config)

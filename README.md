@@ -44,17 +44,28 @@ or (on Windows)
 
 At startup a `config.yml` is automatically created. Those are the values that can be changed:
 
-* `domains-lets-encrypt`: This is a white list of domains that are allowed to fetch a Let's Encrypt certificate. The default value is `- example.com`.
-* `domains-self-signed`: This is a white list of domains for which self-signed certificates are allowed. The domains for Let's Encrypt are automatically added to this list, but you can include additional domains that are only allowed for self-signed certificates. The default value is `- localhost`, `- 127.0.0.1`.
-* `terminate-if-certificate-expires`: This determines whether the program should exit when a certificate is about to expire. If set to true, this allows caching the certificates to the hard disk after the next start. Note that an external script will have to restart the server, and the server will only be restarted on Linux, because it doesn't make sense to do so on Windows. The default value is `false`.
-* `duration-to-certificate-expiry-refresh`: This specifies how long before a certificate expires that self-signed certificates should be renewed. The default value is `48h0m0s` (48 hours).
-* `serve-non-cached-files`: This determines whether to serve files if they are not cached in memory. The default value is `false`.
-* `cache-file-size-limit`: This specifies the maximum size for files that are cached in memory. If files are not cached, and the server is jailed, it might be impossible to access the files. The default value is `10485760` (10 MB).
+* `base-directory`: This specifies the base directory (the web root) to serve static files from. The default value is `static`.
+* `http-addr`: This specifies the HTTP address to bind the server to. The default value is `:http`.
+* `https-addr`: This specifies the HTTPS address to bind the server to. The default value is `:https`.
+### Certificate handling
+* `lets-encrypt-domains`: This is a white list of domains that are allowed to fetch a Let's Encrypt certificate. The default value is `- example.com`.
+* `self-signed-domains`: This is a white list of domains for which self-signed certificates are allowed. The domains for Let's Encrypt are automatically added to this list, but you can include additional domains that are only allowed for self-signed certificates. The default value is `- localhost`, `- 127.0.0.1`.
+* `terminate-on-certificate-expiry`: This determines whether the program should exit when a certificate is about to expire. If set to true, this allows caching the certificates to the hard disk after the next start. Note that an external script will have to restart the server. Also note, that the server will only be restarted on Linux, because it doesn't make sense to do so on Windows. The reason is, that the jail doesn't work on Windows. The default value is `false`.
+* `certificate-expiry-refresh-threshold`: This specifies, how long before their expiration the certificates should be renewed. The default value is `48h0m0s` (48 hours).
+### HTTP timeouts
+* `max-request-timeout`: This specifies the maximum duration to wait for a request to complete. The default value is `15s` (15 seconds).
+* `max-response-timeout`: This specifies the maximum duration to wait for a response to complete. The default value is `60s` (60 seconds).
+### Jail dependent settings
+* `serve-files-not-in-cache`: This can only be `true`, if `jail-process` is set to `false`. It determines whether to serve files that are not cached in memory. The default value is `false`.
+* `max-cacheable-file-size`: This specifies the maximum size for files that are cached in memory. If files are not cached, and the server is jailed, it is impossible to access the files. So, `jail-process` either has to be `false` or the `max-cacheable-file-size` has to be at least as large as the largest file. The default value is `10485760` (10 MB).
+* `jail-process`: This determines whether to jail the process. If a process is jailed, no file can be larger than the size specified in `max-cacheable-file-size`. This only works on Linux. The default value is `true`.
+
 
 ## TODO
 
 * Set the correct caching headers.
 * Implement security relevant HTTP headers.
 * Test the behavior of Let's Encrypt when it is unable to store its certificates to the file system. Maybe it crashes.
+* Maybe find a way to write log files. Open the log file before activating jail?
 * Consider also storing the self-signed certificates.
 * Implement a way to restart the application from within the application itself.
