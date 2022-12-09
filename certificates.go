@@ -79,7 +79,6 @@ func initCertificates() time.Duration {
 			shortestDuration = duration
 		}
 	}
-	log.Println("Checking certificates done.")
 
 	return shortestDuration
 }
@@ -146,8 +145,6 @@ func getTLSCert(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
 		return &tls.Certificate{}, err
 	}
 
-	log.Println("Created self signed certificate for:", name)
-
 	return &cert, nil
 }
 
@@ -202,13 +199,17 @@ func getCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
 	// Try to fetch a certificate from Let's Encrypt.
 	cert, err := m.GetCertificate(hello)
 	if err == nil {
-		log.Println("Got Let's Encrypt certificate for:", name)
+		log.Println("  Got Let's Encrypt certificate for:", name)
 		// Return the certificate if successful.
 		return cert, nil
 	}
 
 	// If autocert returned any error, create a self-signed certificate.
 	cert, err = getTLSCert(hello)
-	certCache[name] = cert
-	return cert, err
+	if err == nil {
+		log.Println("  Created self signed certificate for:", name)
+		certCache[name] = cert
+		return cert, nil
+	}
+	return nil, err
 }

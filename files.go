@@ -19,6 +19,7 @@ var fileCache = make(map[string][]byte)
 // fillCache reads all files in the given directory and its subdirectories
 // and stores their contents in the cache.
 func fillCache(dir string) error {
+	log.Println("Caching files...")
 	dir = filepath.Clean(dir)
 	return filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -32,7 +33,7 @@ func fillCache(dir string) error {
 			return err
 		}
 		trimmedPath := strings.TrimPrefix(path, dir)
-		log.Println("Caching file:", trimmedPath)
+		log.Println(" ", trimmedPath)
 		fileCache[trimmedPath] = data
 		return nil
 	})
@@ -44,6 +45,13 @@ func fillCache(dir string) error {
 func serveFiles(w http.ResponseWriter, r *http.Request) {
 	// Get the file path from the URL.
 	path := r.URL.Path
+
+	// Get the IP address of the client.
+	clientIP := r.RemoteAddr
+	if config.LogRequests {
+		log.Println("Request:", clientIP, "", path)
+	}
+
 	// The root is "/index.html".
 	if path == "/" {
 		path = "/index.html"

@@ -55,6 +55,9 @@ type ServerConfig struct {
 	// If you jail the process, no file can exceed MaxCacheableFileSize.
 	JailProcess bool `yaml:"jail-process"`
 
+	// Log the client IP and URL path of each request.
+	LogRequests bool `yaml:"log-requests"`
+
 	/*
 		TODO: Maybe:
 
@@ -83,6 +86,7 @@ var config = ServerConfig{
 	ServeFilesNotInCache:              false,
 	MaxCacheableFileSize:              10 * 1024 * 1024,
 	JailProcess:                       true,
+	LogRequests:                       true,
 }
 
 func readConfig() {

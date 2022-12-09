@@ -1,0 +1,244 @@
+2022/12/09 12:47:07 Config:
+2022/12/09 12:47:07   base-directory: static
+2022/12/09 12:47:07   http-addr: :80
+2022/12/09 12:47:07   https-addr: :443
+2022/12/09 12:47:07   lets-encrypt-domains: [example.com]
+2022/12/09 12:47:07   self-signed-domains: [localhost 127.0.0.1]
+2022/12/09 12:47:07   terminate-on-certificate-expiry: false
+2022/12/09 12:47:07   certificate-expiry-refresh-threshold: 48h0m0s
+2022/12/09 12:47:07   max-request-timeout: 15s
+2022/12/09 12:47:07   max-response-timeout: 1m0s
+2022/12/09 12:47:07   serve-files-not-in-cache: false
+2022/12/09 12:47:07   max-cacheable-file-size: 10485760
+2022/12/09 12:47:07   jail-process: true
+2022/12/09 12:47:07 Checking certificates...
+2022/12/09 12:47:07 Created self signed certificate for: localhost
+2022/12/09 12:47:07 Created self signed certificate for: 127.0.0.1
+2022/12/09 12:47:09 Created self signed certificate for: example.com
+2022/12/09 12:47:09 Checking certificates done.
+2022/12/09 12:47:09 Caching file: /SourceSansPro-Bold.ttf
+2022/12/09 12:47:09 Caching file: /SourceSansPro-Regular.ttf
+2022/12/09 12:47:09 Caching file: /favicon.ico
+2022/12/09 12:47:09 Caching file: /impressum.html
+2022/12/09 12:47:09 Caching file: /index.html
+2022/12/09 12:47:09 Caching file: /logo.svg
+2022/12/09 12:47:09 Caching file: /style.css
+2022/12/09 12:47:09 Starting HTTPS server on :443
+2022/12/09 12:47:09 Starting HTTP server on :80
+2022/12/09 12:47:09 listen tcp :80: bind: permission denied
+2022/12/09 12:50:33 Config:
+2022/12/09 12:50:33   base-directory: static
+2022/12/09 12:50:33   http-addr: :80
+2022/12/09 12:50:33   https-addr: :443
+2022/12/09 12:50:33   lets-encrypt-domains: [example.com]
+2022/12/09 12:50:33   self-signed-domains: [localhost 127.0.0.1]
+2022/12/09 12:50:33   terminate-on-certificate-expiry: false
+2022/12/09 12:50:33   certificate-expiry-refresh-threshold: 48h0m0s
+2022/12/09 12:50:33   max-request-timeout: 15s
+2022/12/09 12:50:33   max-response-timeout: 1m0s
+2022/12/09 12:50:33   serve-files-not-in-cache: false
+2022/12/09 12:50:33   max-cacheable-file-size: 10485760
+2022/12/09 12:50:33   jail-process: true
+2022/12/09 12:50:33 Checking certificates...
+2022/12/09 12:50:33 Created self signed certificate for: localhost
+2022/12/09 12:50:33 Created self signed certificate for: 127.0.0.1
+2022/12/09 12:50:35 Created self signed certificate for: example.com
+2022/12/09 12:50:35 Checking certificates done.
+2022/12/09 12:50:35 Caching file: /SourceSansPro-Bold.ttf
+2022/12/09 12:50:35 Caching file: /SourceSansPro-Regular.ttf
+2022/12/09 12:50:35 Caching file: /favicon.ico
+2022/12/09 12:50:35 Caching file: /impressum.html
+2022/12/09 12:50:35 Caching file: /index.html
+2022/12/09 12:50:35 Caching file: /logo.svg
+2022/12/09 12:50:35 Caching file: /style.css
+2022/12/09 12:50:35 Starting HTTPS server on :443
+2022/12/09 12:50:35 Starting HTTP server on :80
+2022/12/09 12:50:35 listen tcp :80: bind: permission denied
+2022/12/09 12:54:41 Config:
+2022/12/09 12:54:41   base-directory: static
+2022/12/09 12:54:41   http-addr: :80
+2022/12/09 12:54:41   https-addr: :443
+2022/12/09 12:54:41   lets-encrypt-domains: [example.com]
+2022/12/09 12:54:41   self-signed-domains: [localhost 127.0.0.1]
+2022/12/09 12:54:41   terminate-on-certificate-expiry: false
+2022/12/09 12:54:41   certificate-expiry-refresh-threshold: 48h0m0s
+2022/12/09 12:54:41   max-request-timeout: 15s
+2022/12/09 12:54:41   max-response-timeout: 1m0s
+2022/12/09 12:54:41   serve-files-not-in-cache: false
+2022/12/09 12:54:41   max-cacheable-file-size: 10485760
+2022/12/09 12:54:41   jail-process: true
+2022/12/09 12:54:41 Checking certificates...
+2022/12/09 12:54:41 Created self signed certificate for: localhost
+2022/12/09 12:54:41 Created self signed certificate for: 127.0.0.1
+2022/12/09 12:54:43 Created self signed certificate for: example.com
+2022/12/09 12:54:43 Checking certificates done.
+2022/12/09 12:54:43 Caching files...
+2022/12/09 12:54:43   /SourceSansPro-Bold.ttf
+2022/12/09 12:54:43   /SourceSansPro-Regular.ttf
+2022/12/09 12:54:43   /favicon.ico
+2022/12/09 12:54:43   /impressum.html
+2022/12/09 12:54:43   /index.html
+2022/12/09 12:54:43   /logo.svg
+2022/12/09 12:54:43   /style.css
+2022/12/09 12:54:43 Starting HTTPS server on :443
+2022/12/09 12:54:43 Starting HTTP server on :80
+2022/12/09 12:54:43 listen tcp :80: bind: permission denied
+2022/12/09 13:00:19 Config:
+2022/12/09 13:00:19   base-directory: static
+2022/12/09 13:00:19   http-addr: :80
+2022/12/09 13:00:19   https-addr: :443
+2022/12/09 13:00:19   lets-encrypt-domains: [example.com]
+2022/12/09 13:00:19   self-signed-domains: [localhost 127.0.0.1]
+2022/12/09 13:00:19   terminate-on-certificate-expiry: false
+2022/12/09 13:00:19   certificate-expiry-refresh-threshold: 48h0m0s
+2022/12/09 13:00:19   max-request-timeout: 15s
+2022/12/09 13:00:19   max-response-timeout: 1m0s
+2022/12/09 13:00:19   serve-files-not-in-cache: false
+2022/12/09 13:00:19   max-cacheable-file-size: 10485760
+2022/12/09 13:00:19   jail-process: true
+2022/12/09 13:00:19 Checking certificates...
+2022/12/09 13:00:19   Created self signed certificate for: localhost
+2022/12/09 13:00:19   Created self signed certificate for: 127.0.0.1
+2022/12/09 13:00:21   Created self signed certificate for: example.com
+2022/12/09 13:00:21 Caching files...
+2022/12/09 13:00:21   /SourceSansPro-Bold.ttf
+2022/12/09 13:00:21   /SourceSansPro-Regular.ttf
+2022/12/09 13:00:21   /favicon.ico
+2022/12/09 13:00:21   /impressum.html
+2022/12/09 13:00:21   /index.html
+2022/12/09 13:00:21   /logo.svg
+2022/12/09 13:00:21   /style.css
+2022/12/09 13:00:21 Starting HTTPS server on :443
+2022/12/09 13:00:21 Starting HTTP server on :80
+2022/12/09 13:00:21 listen tcp :80: bind: permission denied
+2022/12/09 13:01:10 Config:
+2022/12/09 13:01:10   base-directory: static
+2022/12/09 13:01:10   http-addr: :80
+2022/12/09 13:01:10   https-addr: :443
+2022/12/09 13:01:10   lets-encrypt-domains: [example.com]
+2022/12/09 13:01:10   self-signed-domains: [localhost 127.0.0.1]
+2022/12/09 13:01:10   terminate-on-certificate-expiry: false
+2022/12/09 13:01:10   certificate-expiry-refresh-threshold: 48h0m0s
+2022/12/09 13:01:10   max-request-timeout: 15s
+2022/12/09 13:01:10   max-response-timeout: 1m0s
+2022/12/09 13:01:10   serve-files-not-in-cache: false
+2022/12/09 13:01:10   max-cacheable-file-size: 10485760
+2022/12/09 13:01:10   jail-process: true
+2022/12/09 13:01:10 Checking certificates...
+2022/12/09 13:01:10   Created self signed certificate for: localhost
+2022/12/09 13:01:10   Created self signed certificate for: 127.0.0.1
+2022/12/09 13:01:12   Created self signed certificate for: example.com
+2022/12/09 13:01:12 Caching files...
+2022/12/09 13:01:12   /SourceSansPro-Bold.ttf
+2022/12/09 13:01:12   /SourceSansPro-Regular.ttf
+2022/12/09 13:01:12   /favicon.ico
+2022/12/09 13:01:12   /impressum.html
+2022/12/09 13:01:12   /index.html
+2022/12/09 13:01:12   /logo.svg
+2022/12/09 13:01:12   /style.css
+2022/12/09 13:01:12 Starting HTTPS server on :443
+2022/12/09 13:01:12 Starting HTTP server on :80
+2022/12/09 13:01:12 Dropping rights...
+2022/12/09 13:01:12 Serving files ...
+2022/12/09 13:01:20 http: TLS handshake error from [::1]:35980: remote error: tls: unknown certificate
+2022/12/09 13:01:23 http: TLS handshake error from [::1]:35992: remote error: tls: unknown certificate
+2022/12/09 13:24:19 Config:
+2022/12/09 13:24:19   base-directory: static
+2022/12/09 13:24:19   http-addr: :80
+2022/12/09 13:24:19   https-addr: :443
+2022/12/09 13:24:19   lets-encrypt-domains: [example.com]
+2022/12/09 13:24:19   self-signed-domains: [localhost 127.0.0.1]
+2022/12/09 13:24:19   terminate-on-certificate-expiry: false
+2022/12/09 13:24:19   certificate-expiry-refresh-threshold: 48h0m0s
+2022/12/09 13:24:19   max-request-timeout: 15s
+2022/12/09 13:24:19   max-response-timeout: 1m0s
+2022/12/09 13:24:19   serve-files-not-in-cache: false
+2022/12/09 13:24:19   max-cacheable-file-size: 10485760
+2022/12/09 13:24:19   jail-process: true
+2022/12/09 13:24:19   log-requests: true
+2022/12/09 13:24:19 Checking certificates...
+2022/12/09 13:24:20   Created self signed certificate for: localhost
+2022/12/09 13:24:20   Created self signed certificate for: 127.0.0.1
+2022/12/09 13:24:22   Created self signed certificate for: example.com
+2022/12/09 13:24:22 Caching files...
+2022/12/09 13:24:22   /SourceSansPro-Bold.ttf
+2022/12/09 13:24:22   /SourceSansPro-Regular.ttf
+2022/12/09 13:24:22   /favicon.ico
+2022/12/09 13:24:22   /impressum.html
+2022/12/09 13:24:22   /index.html
+2022/12/09 13:24:22   /logo.svg
+2022/12/09 13:24:22   /style.css
+2022/12/09 13:24:22 Starting HTTPS server on :443
+2022/12/09 13:24:22 Starting HTTP server on :80
+2022/12/09 13:24:22 Dropping rights...
+2022/12/09 13:24:22 Serving files ...
+2022/12/09 13:24:28 http: TLS handshake error from [::1]:33702: remote error: tls: unknown certificate
+2022/12/09 13:24:31 http: TLS handshake error from [::1]:33718: remote error: tls: unknown certificate
+2022/12/09 13:24:31 Request: [::1]:33722  /impressum.html
+2022/12/09 13:24:31 Request: [::1]:33722  /style.css
+2022/12/09 13:24:31 Request: [::1]:33722  /logo.svg
+2022/12/09 13:24:31 Request: [::1]:33722  /favicon.ico
+2022/12/09 13:24:40 Request: [::1]:33722  /
+2022/12/09 13:24:40 Request: [::1]:33722  /logo.svg
+2022/12/09 13:24:40 Request: [::1]:33722  /style.css
+2022/12/09 13:24:43 Request: [::1]:33722  /impressum.html
+2022/12/09 13:24:44 Request: [::1]:33722  /style.css
+2022/12/09 13:24:44 Request: [::1]:33722  /logo.svg
+2022/12/09 13:24:46 Request: [::1]:33722  /
+2022/12/09 13:24:46 Request: [::1]:33722  /style.css
+2022/12/09 13:24:46 Request: [::1]:33722  /logo.svg
+2022/12/09 13:24:48 Request: [::1]:33722  /impressum.html
+2022/12/09 13:24:48 Request: [::1]:33722  /style.css
+2022/12/09 13:24:48 Request: [::1]:33722  /logo.svg
+2022/12/09 13:24:53 Request: [::1]:33722  /
+2022/12/09 13:24:53 Request: [::1]:33722  /style.css
+2022/12/09 13:24:53 Request: [::1]:33722  /logo.svg
+2022/12/09 13:25:00 Request: [::1]:33722  /
+2022/12/09 13:25:00 Request: [::1]:33722  /style.css
+2022/12/09 13:25:00 Request: [::1]:33722  /logo.svg
+2022/12/09 13:25:00 Request: [::1]:33722  /favicon.ico
+2022/12/09 13:25:00 Request: [::1]:33722  /
+2022/12/09 13:25:00 Request: [::1]:33722  /style.css
+2022/12/09 13:25:00 Request: [::1]:33722  /logo.svg
+2022/12/09 13:25:00 Request: [::1]:33722  /favicon.ico
+2022/12/09 13:25:01 Request: [::1]:33722  /
+2022/12/09 13:25:01 Request: [::1]:33722  /style.css
+2022/12/09 13:25:01 Request: [::1]:33722  /logo.svg
+2022/12/09 13:25:01 Request: [::1]:33722  /favicon.ico
+2022/12/09 13:25:04 Request: [::1]:33722  /
+2022/12/09 13:25:04 Request: [::1]:33722  /style.css
+2022/12/09 13:25:04 Request: [::1]:33722  /logo.svg
+2022/12/09 13:25:04 Request: [::1]:33722  /favicon.ico
+2022/12/09 13:25:06 Request: [::1]:33722  /
+2022/12/09 13:25:06 Request: [::1]:33722  /logo.svg
+2022/12/09 13:25:06 Request: [::1]:33722  /style.css
+2022/12/09 13:25:06 Request: [::1]:33722  /favicon.ico
+2022/12/09 13:25:07 Request: [::1]:33722  /
+2022/12/09 13:25:07 Request: [::1]:33722  /style.css
+2022/12/09 13:25:07 Request: [::1]:33722  /logo.svg
+2022/12/09 13:25:07 Request: [::1]:33722  /favicon.ico
+2022/12/09 13:25:10 Request: [::1]:33722  /
+2022/12/09 13:25:10 Request: [::1]:33722  /style.css
+2022/12/09 13:25:10 Request: [::1]:33722  /logo.svg
+2022/12/09 13:25:10 Request: [::1]:33722  /favicon.ico
+2022/12/09 13:25:11 Request: [::1]:33722  /
+2022/12/09 13:25:11 Request: [::1]:33722  /style.css
+2022/12/09 13:25:11 Request: [::1]:33722  /logo.svg
+2022/12/09 13:25:11 Request: [::1]:33722  /favicon.ico
+2022/12/09 13:25:12 Request: [::1]:33722  /
+2022/12/09 13:25:12 Request: [::1]:33722  /style.css
+2022/12/09 13:25:12 Request: [::1]:33722  /logo.svg
+2022/12/09 13:25:12 Request: [::1]:33722  /favicon.ico
+2022/12/09 13:25:13 Request: [::1]:33722  /
+2022/12/09 13:25:13 Request: [::1]:33722  /style.css
+2022/12/09 13:25:13 Request: [::1]:33722  /logo.svg
+2022/12/09 13:25:13 Request: [::1]:33722  /favicon.ico
+2022/12/09 13:25:15 Request: [::1]:33722  /impressum.html
+2022/12/09 13:25:15 Request: [::1]:33722  /style.css
+2022/12/09 13:25:15 Request: [::1]:33722  /logo.svg
+2022/12/09 13:25:16 Request: [::1]:33722  /
+2022/12/09 13:25:16 Request: [::1]:33722  /style.css
+2022/12/09 13:25:16 Request: [::1]:33722  /logo.svg
+2022/12/09 13:25:21 Request: [::1]:33722  /
+2022/12/09 13:25:21 Request: [::1]:33722  /logo.svg
+2022/12/09 13:25:21 Request: [::1]:33722  /style.css

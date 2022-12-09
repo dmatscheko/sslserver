@@ -12,6 +12,9 @@ import (
 )
 
 func main() {
+	// Initialize the output for the logger.
+	initLogging()
+
 	// Read config file.
 	readConfig()
 
