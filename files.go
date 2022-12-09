@@ -80,7 +80,7 @@ func serveFiles(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// The file has not been cached, so read it from disk.
-		pathOnFileSystem := filepath.Join(config.BaseDirectory, path)
+		pathOnFileSystem := filepath.Join(config.WebRootDirectory, path)
 		file, err := os.Open(pathOnFileSystem)
 		if err != nil {
 			log.Println("File not found:", path)

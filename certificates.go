@@ -24,7 +24,7 @@ var certCache map[string]*tls.Certificate = nil
 
 // Create a new autocert manager.
 var m = &autocert.Manager{
-	Cache:       autocert.DirCache("certcache"),
+	Cache:       autocert.DirCache(config.CertificateCacheDirectory),
 	Prompt:      autocert.AcceptTOS,
 	HostPolicy:  autocert.HostWhitelist(config.LetsEncryptDomains...),
 	RenewBefore: config.CertificateExpiryRefreshThreshold + 24*time.Hour, // This way, RenewBefore is always longer than the certificate expiry timeout when the server terminates.

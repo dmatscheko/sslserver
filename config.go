@@ -14,7 +14,7 @@ import (
 
 type ServerConfig struct {
 	// The base directory (the web root) to serve static files from.
-	BaseDirectory string `yaml:"base-directory"`
+	WebRootDirectory string `yaml:"web-root-directory"`
 
 	// The HTTP address to bind the server to.
 	HttpAddr string `yaml:"http-addr"`
@@ -30,6 +30,9 @@ type ServerConfig struct {
 	// The domains for Let's Encrypt are automatically added to this list,
 	// but you can include domains that are only allowed for self signed certificates.
 	SelfSignedDomains []string `yaml:"self-signed-domains"`
+
+	// Let's Encrypt certificates are stored in this directory.
+	CertificateCacheDirectory string `yaml:"certificate-cache-directory"`
 
 	// Set to true if the program should exit when a certificate is about to expire.
 	// This allows to cache the certificates to the hard disk after the next start.
@@ -82,11 +85,12 @@ type ServerConfig struct {
 
 // Set the default values of the config variables.
 var config = ServerConfig{
-	BaseDirectory:                     "jail/www_static",
+	WebRootDirectory:                  "jail/www_static",
 	HttpAddr:                          ":http",
 	HttpsAddr:                         ":https",
 	LetsEncryptDomains:                []string{"example.com"},
 	SelfSignedDomains:                 []string{"localhost", "127.0.0.1"},
+	CertificateCacheDirectory:         "certcache",
 	TerminateOnCertificateExpiry:      false,
 	CertificateExpiryRefreshThreshold: 48 * time.Hour,
 	MaxRequestTimeout:                 15 * time.Second,
@@ -157,16 +161,16 @@ func readConfig() {
 		config.LogFile = ""
 	}
 
-	config.BaseDirectory = filepath.Clean(config.BaseDirectory)
-	if fileInfo, err := os.Stat(config.BaseDirectory); os.IsNotExist(err) {
+	config.WebRootDirectory = filepath.Clean(config.WebRootDirectory)
+	if fileInfo, err := os.Stat(config.WebRootDirectory); os.IsNotExist(err) {
 		// Create the directory if it doesn't exist.
-		if err := os.Mkdir(config.BaseDirectory, 0555); err != nil {
+		if err := os.Mkdir(config.WebRootDirectory, 0555); err != nil {
 			log.Fatal(err)
 		}
 	} else if err != nil || !fileInfo.Mode().IsDir() {
 		// There is an error or it is not a directory.
 		// Set it to "jail/www_static" and hope for the best.
-		config.BaseDirectory = "jail/www_static"
+		config.WebRootDirectory = "jail/www_static"
 	}
 
 	config.JailDirectory = filepath.Clean(config.JailDirectory)

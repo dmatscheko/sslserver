@@ -26,14 +26,14 @@ func main() {
 
 	// Set permissions for the files and directores in (and including) the web root.
 	log.Println("Setting file permissions for web root")
-	err := setPermissions(config.BaseDirectory)
+	err := setPermissions(config.WebRootDirectory)
 	if err != nil {
 		log.Fatal("Could not set permissions:", err)
 	}
 
 	// Initialize (fill) the file cache.
 	log.Println("Caching files...")
-	err = fillCache(config.BaseDirectory)
+	err = fillCache(config.WebRootDirectory)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -165,7 +165,7 @@ func main() {
 	isJailed := false
 	if config.JailProcess {
 		// Convert the relative paths to absolute paths.
-		absoluteBaseDirectory, err := filepath.Abs(config.BaseDirectory)
+		absoluteBaseDirectory, err := filepath.Abs(config.WebRootDirectory)
 		if err != nil {
 			log.Fatalln("Could not get absolute path for web root:", err)
 			return
@@ -182,8 +182,8 @@ func main() {
 			if trimmedBaseDirectory == "" {
 				trimmedBaseDirectory = "."
 			}
-			log.Println("Base directory (web root) is inside the jail. Changing", config.BaseDirectory, "to", trimmedBaseDirectory)
-			config.BaseDirectory = trimmedBaseDirectory
+			log.Println("Base directory (web root) is inside the jail. Changing", config.WebRootDirectory, "to", trimmedBaseDirectory)
+			config.WebRootDirectory = trimmedBaseDirectory
 		} else {
 			log.Println("Base directory (web root) is not inside the jail. Cannot serve files above the max-cacheable-file-size")
 		}

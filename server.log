@@ -583,3 +583,84 @@
 2022/12/09 16:49:15 Going to jail
 2022/12/09 16:49:15 Dropping rights
 2022/12/09 16:49:15 Serving files ...
+2022/12/09 16:59:11 Configuration file config.yaml does not exist. Creating the file...
+2022/12/09 16:59:11 Done.
+2022/12/09 16:59:11 Config:
+2022/12/09 16:59:11   web-root-directory: jail/www_static
+2022/12/09 16:59:11   http-addr: :80
+2022/12/09 16:59:11   https-addr: :443
+2022/12/09 16:59:11   lets-encrypt-domains: [example.com]
+2022/12/09 16:59:11   self-signed-domains: [localhost 127.0.0.1]
+2022/12/09 16:59:11   terminate-on-certificate-expiry: false
+2022/12/09 16:59:11   certificate-expiry-refresh-threshold: 48h0m0s
+2022/12/09 16:59:11   max-request-timeout: 15s
+2022/12/09 16:59:11   max-response-timeout: 1m0s
+2022/12/09 16:59:11   serve-files-not-in-cache: true
+2022/12/09 16:59:11   max-cacheable-file-size: 1048576
+2022/12/09 16:59:11   jail-process: true
+2022/12/09 16:59:11   jail-directory: jail
+2022/12/09 16:59:11   log-requests: true
+2022/12/09 16:59:11   log-file: server.log
+2022/12/09 16:59:11 Checking certificates...
+2022/12/09 16:59:11   Created self signed certificate for: localhost
+2022/12/09 16:59:11   Created self signed certificate for: 127.0.0.1
+2022/12/09 16:59:13   Created self signed certificate for: example.com
+2022/12/09 16:59:13 Setting file permissions for web root
+2022/12/09 16:59:13 Caching files...
+2022/12/09 16:59:13   /SourceSansPro-Bold.ttf
+2022/12/09 16:59:13   /SourceSansPro-Regular.ttf
+2022/12/09 16:59:13   /favicon.ico
+2022/12/09 16:59:13   /impressum.html
+2022/12/09 16:59:13   /index.html
+2022/12/09 16:59:13  Warning, file too large for caching: /istoolarge.file
+2022/12/09 16:59:13   /logo.svg
+2022/12/09 16:59:13   /style.css
+2022/12/09 16:59:13   /tstsubdir/index2.html
+2022/12/09 16:59:13 Starting HTTPS server on :443
+2022/12/09 16:59:13 Starting HTTP server on :80
+2022/12/09 16:59:13 Base directory (web root) is inside the jail. Changing jail/www_static to /www_static
+2022/12/09 16:59:13 Setting file permissions for jail
+2022/12/09 16:59:13 Going to jail
+2022/12/09 16:59:13 Dropping rights
+2022/12/09 16:59:13 Serving files ...
+2022/12/09 17:06:13 Configuration file config.yaml does not exist. Creating the file...
+2022/12/09 17:06:13 Done.
+2022/12/09 17:06:13 Config:
+2022/12/09 17:06:13   web-root-directory: jail/www_static
+2022/12/09 17:06:13   http-addr: :80
+2022/12/09 17:06:13   https-addr: :443
+2022/12/09 17:06:13   lets-encrypt-domains: [example.com]
+2022/12/09 17:06:13   self-signed-domains: [localhost 127.0.0.1]
+2022/12/09 17:06:13   certificate-cache-directory: certcache
+2022/12/09 17:06:13   terminate-on-certificate-expiry: false
+2022/12/09 17:06:13   certificate-expiry-refresh-threshold: 48h0m0s
+2022/12/09 17:06:13   max-request-timeout: 15s
+2022/12/09 17:06:13   max-response-timeout: 1m0s
+2022/12/09 17:06:13   serve-files-not-in-cache: true
+2022/12/09 17:06:13   max-cacheable-file-size: 1048576
+2022/12/09 17:06:13   jail-process: true
+2022/12/09 17:06:13   jail-directory: jail
+2022/12/09 17:06:13   log-requests: true
+2022/12/09 17:06:13   log-file: server.log
+2022/12/09 17:06:13 Checking certificates...
+2022/12/09 17:06:13   Created self signed certificate for: localhost
+2022/12/09 17:06:13   Created self signed certificate for: 127.0.0.1
+2022/12/09 17:06:15   Created self signed certificate for: example.com
+2022/12/09 17:06:15 Setting file permissions for web root
+2022/12/09 17:06:15 Caching files...
+2022/12/09 17:06:15   /SourceSansPro-Bold.ttf
+2022/12/09 17:06:15   /SourceSansPro-Regular.ttf
+2022/12/09 17:06:15   /favicon.ico
+2022/12/09 17:06:15   /impressum.html
+2022/12/09 17:06:15   /index.html
+2022/12/09 17:06:15  Warning, file too large for caching: /istoolarge.file
+2022/12/09 17:06:15   /logo.svg
+2022/12/09 17:06:15   /style.css
+2022/12/09 17:06:15   /tstsubdir/index2.html
+2022/12/09 17:06:15 Starting HTTPS server on :443
+2022/12/09 17:06:15 Starting HTTP server on :80
+2022/12/09 17:06:15 Base directory (web root) is inside the jail. Changing jail/www_static to /www_static
+2022/12/09 17:06:15 Setting file permissions for jail
+2022/12/09 17:06:15 Going to jail
+2022/12/09 17:06:15 Dropping rights
+2022/12/09 17:06:15 Serving files ...
