@@ -48,7 +48,6 @@ func initCertificates() time.Duration {
 
 	// Initialize certificates before going to jail.
 	var shortestDuration time.Duration = 10 * 365 * 24 * time.Hour // Initial duration is 10 years which should be longer than any certificate expiration.
-	log.Println("Checking certificates...")
 	for _, serverName := range config.SelfSignedDomains {
 		cert, err := getCertificate(&tls.ClientHelloInfo{ServerName: serverName})
 		if err != nil {

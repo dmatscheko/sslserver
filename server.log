@@ -94,3 +94,244 @@
 2022/12/09 14:11:07 Starting HTTPS server on :443
 2022/12/09 14:11:07 Starting HTTP server on :80
 2022/12/09 14:11:07 listen tcp :80: bind: permission denied
+2022/12/09 14:53:08 Config:
+2022/12/09 14:53:08   base-directory: static
+2022/12/09 14:53:08   http-addr: :80
+2022/12/09 14:53:08   https-addr: :443
+2022/12/09 14:53:08   lets-encrypt-domains: [example.com]
+2022/12/09 14:53:08   self-signed-domains: [localhost 127.0.0.1]
+2022/12/09 14:53:08   terminate-on-certificate-expiry: false
+2022/12/09 14:53:08   certificate-expiry-refresh-threshold: 48h0m0s
+2022/12/09 14:53:08   max-request-timeout: 15s
+2022/12/09 14:53:08   max-response-timeout: 1m0s
+2022/12/09 14:53:08   serve-files-not-in-cache: false
+2022/12/09 14:53:08   max-cacheable-file-size: 10485760
+2022/12/09 14:53:08   jail-process: true
+2022/12/09 14:53:08   log-requests: true
+2022/12/09 14:53:08   log-file: server.log
+2022/12/09 14:53:08 Checking certificates...
+2022/12/09 14:53:08   Created self signed certificate for: localhost
+2022/12/09 14:53:08   Created self signed certificate for: 127.0.0.1
+2022/12/09 14:53:10   Created self signed certificate for: example.com
+2022/12/09 14:53:10 Caching files...
+2022/12/09 14:53:10   /SourceSansPro-Bold.ttf
+2022/12/09 14:53:10   /SourceSansPro-Regular.ttf
+2022/12/09 14:53:10   /favicon.ico
+2022/12/09 14:53:10   /impressum.html
+2022/12/09 14:53:10   /index.html
+2022/12/09 14:53:10  Warning, file too large for caching: /istoolarge.file
+2022/12/09 14:53:10   /logo.svg
+2022/12/09 14:53:10   /style.css
+2022/12/09 14:53:10   /tstsubdir/index2.html
+2022/12/09 14:53:10 Starting HTTPS server on :443
+2022/12/09 14:53:10 Starting HTTP server on :80
+2022/12/09 14:53:10 listen tcp :80: bind: permission denied
+2022/12/09 14:54:52 Config:
+2022/12/09 14:54:52   base-directory: static
+2022/12/09 14:54:52   http-addr: :80
+2022/12/09 14:54:52   https-addr: :443
+2022/12/09 14:54:52   lets-encrypt-domains: [example.com]
+2022/12/09 14:54:52   self-signed-domains: [localhost 127.0.0.1]
+2022/12/09 14:54:52   terminate-on-certificate-expiry: false
+2022/12/09 14:54:52   certificate-expiry-refresh-threshold: 48h0m0s
+2022/12/09 14:54:52   max-request-timeout: 15s
+2022/12/09 14:54:52   max-response-timeout: 1m0s
+2022/12/09 14:54:52   serve-files-not-in-cache: false
+2022/12/09 14:54:52   max-cacheable-file-size: 10485760
+2022/12/09 14:54:52   jail-process: true
+2022/12/09 14:54:52   log-requests: true
+2022/12/09 14:54:52   log-file: server.log
+2022/12/09 14:54:52 Checking certificates...
+2022/12/09 14:54:52   Created self signed certificate for: localhost
+2022/12/09 14:54:52   Created self signed certificate for: 127.0.0.1
+2022/12/09 14:54:54   Created self signed certificate for: example.com
+2022/12/09 14:54:54 Caching files...
+2022/12/09 14:54:54   /SourceSansPro-Bold.ttf
+2022/12/09 14:54:54   /SourceSansPro-Regular.ttf
+2022/12/09 14:54:54   /favicon.ico
+2022/12/09 14:54:54   /impressum.html
+2022/12/09 14:54:54   /index.html
+2022/12/09 14:54:54  Warning, file too large for caching: /istoolarge.file
+2022/12/09 14:54:54   /logo.svg
+2022/12/09 14:54:54   /style.css
+2022/12/09 14:54:54   /tstsubdir/index2.html
+2022/12/09 14:54:54 Starting HTTPS server on :443
+2022/12/09 14:54:54 Starting HTTP server on :80
+2022/12/09 14:54:54 listen tcp :443: bind: permission denied
+2022/12/09 15:39:17 Config:
+2022/12/09 15:39:17   base-directory: static
+2022/12/09 15:39:17   http-addr: :80
+2022/12/09 15:39:17   https-addr: :443
+2022/12/09 15:39:17   lets-encrypt-domains: [example.com]
+2022/12/09 15:39:17   self-signed-domains: [localhost 127.0.0.1]
+2022/12/09 15:39:17   terminate-on-certificate-expiry: false
+2022/12/09 15:39:17   certificate-expiry-refresh-threshold: 48h0m0s
+2022/12/09 15:39:17   max-request-timeout: 15s
+2022/12/09 15:39:17   max-response-timeout: 1m0s
+2022/12/09 15:39:17   serve-files-not-in-cache: false
+2022/12/09 15:39:17   max-cacheable-file-size: 10485760
+2022/12/09 15:39:17   jail-process: true
+2022/12/09 15:39:17   jail-directory: jail
+2022/12/09 15:39:17   log-requests: true
+2022/12/09 15:39:17   log-file: server.log
+2022/12/09 15:39:17 Checking certificates...
+2022/12/09 15:39:17   Created self signed certificate for: localhost
+2022/12/09 15:39:17   Created self signed certificate for: 127.0.0.1
+2022/12/09 15:39:19   Created self signed certificate for: example.com
+2022/12/09 15:39:19 Caching files...
+2022/12/09 15:39:19   /SourceSansPro-Bold.ttf
+2022/12/09 15:39:19   /SourceSansPro-Regular.ttf
+2022/12/09 15:39:19   /favicon.ico
+2022/12/09 15:39:19   /impressum.html
+2022/12/09 15:39:19   /index.html
+2022/12/09 15:39:19  Warning, file too large for caching: /istoolarge.file
+2022/12/09 15:39:19   /logo.svg
+2022/12/09 15:39:19   /style.css
+2022/12/09 15:39:19   /tstsubdir/index2.html
+2022/12/09 15:39:19 Starting HTTPS server on :443
+2022/12/09 15:39:19 Starting HTTP server on :80
+2022/12/09 15:39:19 listen tcp :80: bind: permission denied
+2022/12/09 15:39:42 Config:
+2022/12/09 15:39:42   base-directory: static
+2022/12/09 15:39:42   http-addr: :80
+2022/12/09 15:39:42   https-addr: :443
+2022/12/09 15:39:42   lets-encrypt-domains: [example.com]
+2022/12/09 15:39:42   self-signed-domains: [localhost 127.0.0.1]
+2022/12/09 15:39:42   terminate-on-certificate-expiry: false
+2022/12/09 15:39:42   certificate-expiry-refresh-threshold: 48h0m0s
+2022/12/09 15:39:42   max-request-timeout: 15s
+2022/12/09 15:39:42   max-response-timeout: 1m0s
+2022/12/09 15:39:42   serve-files-not-in-cache: false
+2022/12/09 15:39:42   max-cacheable-file-size: 10485760
+2022/12/09 15:39:42   jail-process: true
+2022/12/09 15:39:42   jail-directory: jail
+2022/12/09 15:39:42   log-requests: true
+2022/12/09 15:39:42   log-file: server.log
+2022/12/09 15:39:42 Checking certificates...
+2022/12/09 15:39:42   Created self signed certificate for: localhost
+2022/12/09 15:39:42   Created self signed certificate for: 127.0.0.1
+2022/12/09 15:39:44   Created self signed certificate for: example.com
+2022/12/09 15:39:44 Caching files...
+2022/12/09 15:39:44   /SourceSansPro-Bold.ttf
+2022/12/09 15:39:44   /SourceSansPro-Regular.ttf
+2022/12/09 15:39:44   /favicon.ico
+2022/12/09 15:39:44   /impressum.html
+2022/12/09 15:39:44   /index.html
+2022/12/09 15:39:44  Warning, file too large for caching: /istoolarge.file
+2022/12/09 15:39:44   /logo.svg
+2022/12/09 15:39:44   /style.css
+2022/12/09 15:39:44   /tstsubdir/index2.html
+2022/12/09 15:39:44 Starting HTTPS server on :443
+2022/12/09 15:39:44 Starting HTTP server on :80
+2022/12/09 15:39:44 Setting file permissions for jail
+2022/12/09 15:39:44 Dropping rights...
+2022/12/09 15:39:44 Serving files ...
+2022/12/09 15:41:13 Config:
+2022/12/09 15:41:13   base-directory: static
+2022/12/09 15:41:13   http-addr: :80
+2022/12/09 15:41:13   https-addr: :443
+2022/12/09 15:41:13   lets-encrypt-domains: [example.com]
+2022/12/09 15:41:13   self-signed-domains: [localhost 127.0.0.1]
+2022/12/09 15:41:13   terminate-on-certificate-expiry: false
+2022/12/09 15:41:13   certificate-expiry-refresh-threshold: 48h0m0s
+2022/12/09 15:41:13   max-request-timeout: 15s
+2022/12/09 15:41:13   max-response-timeout: 1m0s
+2022/12/09 15:41:13   serve-files-not-in-cache: false
+2022/12/09 15:41:13   max-cacheable-file-size: 10485760
+2022/12/09 15:41:13   jail-process: true
+2022/12/09 15:41:13   jail-directory: jail
+2022/12/09 15:41:13   log-requests: true
+2022/12/09 15:41:13   log-file: server.log
+2022/12/09 15:41:13 Checking certificates...
+2022/12/09 15:41:13   Created self signed certificate for: localhost
+2022/12/09 15:41:13   Created self signed certificate for: 127.0.0.1
+2022/12/09 15:41:15   Created self signed certificate for: example.com
+2022/12/09 15:41:15 Setting file permissions for web root
+2022/12/09 15:41:16 Caching files...
+2022/12/09 15:41:16   /SourceSansPro-Bold.ttf
+2022/12/09 15:41:16   /SourceSansPro-Regular.ttf
+2022/12/09 15:41:16   /favicon.ico
+2022/12/09 15:41:16   /impressum.html
+2022/12/09 15:41:16   /index.html
+2022/12/09 15:41:16  Warning, file too large for caching: /istoolarge.file
+2022/12/09 15:41:16   /logo.svg
+2022/12/09 15:41:16   /style.css
+2022/12/09 15:41:16   /tstsubdir/index2.html
+2022/12/09 15:41:16 Starting HTTPS server on :443
+2022/12/09 15:41:16 Starting HTTP server on :80
+2022/12/09 15:41:16 Setting file permissions for jail
+2022/12/09 15:41:16 Dropping rights...
+2022/12/09 15:41:16 Serving files ...
+2022/12/09 15:45:53 Config:
+2022/12/09 15:45:53   base-directory: static
+2022/12/09 15:45:53   http-addr: :80
+2022/12/09 15:45:53   https-addr: :443
+2022/12/09 15:45:53   lets-encrypt-domains: [example.com]
+2022/12/09 15:45:53   self-signed-domains: [localhost 127.0.0.1]
+2022/12/09 15:45:53   terminate-on-certificate-expiry: false
+2022/12/09 15:45:53   certificate-expiry-refresh-threshold: 48h0m0s
+2022/12/09 15:45:53   max-request-timeout: 15s
+2022/12/09 15:45:53   max-response-timeout: 1m0s
+2022/12/09 15:45:53   serve-files-not-in-cache: false
+2022/12/09 15:45:53   max-cacheable-file-size: 10485760
+2022/12/09 15:45:53   jail-process: true
+2022/12/09 15:45:53   jail-directory: jail
+2022/12/09 15:45:53   log-requests: true
+2022/12/09 15:45:53   log-file: server.log
+2022/12/09 15:45:53 Checking certificates...
+2022/12/09 15:45:53   Created self signed certificate for: localhost
+2022/12/09 15:45:53   Created self signed certificate for: 127.0.0.1
+2022/12/09 15:45:55   Created self signed certificate for: example.com
+2022/12/09 15:45:55 Setting file permissions for web root
+2022/12/09 15:45:55 Caching files...
+2022/12/09 15:45:55   /SourceSansPro-Bold.ttf
+2022/12/09 15:45:55   /SourceSansPro-Regular.ttf
+2022/12/09 15:45:55   /favicon.ico
+2022/12/09 15:45:55   /impressum.html
+2022/12/09 15:45:55   /index.html
+2022/12/09 15:45:55  Warning, file too large for caching: /istoolarge.file
+2022/12/09 15:45:55   /logo.svg
+2022/12/09 15:45:55   /style.css
+2022/12/09 15:45:55   /tstsubdir/index2.html
+2022/12/09 15:45:55 Starting HTTPS server on :443
+2022/12/09 15:45:55 Starting HTTP server on :80
+2022/12/09 15:45:55 Setting file permissions for jail
+2022/12/09 15:45:55 Dropping rights...
+2022/12/09 15:45:55 Serving files ...
+2022/12/09 15:48:41 Config:
+2022/12/09 15:48:41   base-directory: static
+2022/12/09 15:48:41   http-addr: :80
+2022/12/09 15:48:41   https-addr: :443
+2022/12/09 15:48:41   lets-encrypt-domains: [example.com]
+2022/12/09 15:48:41   self-signed-domains: [localhost 127.0.0.1]
+2022/12/09 15:48:41   terminate-on-certificate-expiry: false
+2022/12/09 15:48:41   certificate-expiry-refresh-threshold: 48h0m0s
+2022/12/09 15:48:41   max-request-timeout: 15s
+2022/12/09 15:48:41   max-response-timeout: 1m0s
+2022/12/09 15:48:41   serve-files-not-in-cache: false
+2022/12/09 15:48:41   max-cacheable-file-size: 10485760
+2022/12/09 15:48:41   jail-process: true
+2022/12/09 15:48:41   jail-directory: jail
+2022/12/09 15:48:41   log-requests: true
+2022/12/09 15:48:41   log-file: server.log
+2022/12/09 15:48:41 Checking certificates...
+2022/12/09 15:48:41   Created self signed certificate for: localhost
+2022/12/09 15:48:41   Created self signed certificate for: 127.0.0.1
+2022/12/09 15:48:43   Created self signed certificate for: example.com
+2022/12/09 15:48:43 Setting file permissions for web root
+2022/12/09 15:48:43 Caching files...
+2022/12/09 15:48:43   /SourceSansPro-Bold.ttf
+2022/12/09 15:48:43   /SourceSansPro-Regular.ttf
+2022/12/09 15:48:43   /favicon.ico
+2022/12/09 15:48:43   /impressum.html
+2022/12/09 15:48:43   /index.html
+2022/12/09 15:48:43  Warning, file too large for caching: /istoolarge.file
+2022/12/09 15:48:43   /logo.svg
+2022/12/09 15:48:43   /style.css
+2022/12/09 15:48:43   /tstsubdir/index2.html
+2022/12/09 15:48:43 Starting HTTPS server on :443
+2022/12/09 15:48:43 Starting HTTP server on :80
+2022/12/09 15:48:43 Setting file permissions for jail
+2022/12/09 15:48:43 Going to jail
+2022/12/09 15:48:43 Dropping rights
+2022/12/09 15:48:43 Serving files ...

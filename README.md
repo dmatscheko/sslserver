@@ -60,6 +60,7 @@ At startup a `config.yml` is automatically created. Those are the values that ca
 * `serve-files-not-in-cache`: This can only be `true`, if `jail-process` is set to `false`. It determines whether to serve files that are not cached in memory. The default value is `false`.
 * `max-cacheable-file-size`: This specifies the maximum size for files that are cached in memory. If files are not cached, and the server is jailed, it is impossible to access the files. So, `jail-process` either has to be `false` or the `max-cacheable-file-size` has to be at least as large as the largest file. The default value is `10485760` (10 MB).
 * `jail-process`: This determines whether to jail the process. If a process is jailed, no file can be larger than the size specified in `max-cacheable-file-size`. This only works on Linux. The default value is `true`.
+* `jail-directory`: The directory in which to jail the process. Warning, the permissions for all files will be set to `a=r`, and for all directories to `a=rx`. The default value is `jail`.
 ### Logging
 * `log-requests`: Log the client IP and the URL path of each request. Warning: If `jail-process` is set to `true`, the logfiles can not be rotated and will grow indefinitely. The default value is `true`.
 * `log-file`: The name of the log file. If the name is empty (= `""`), the log output will only be written to `stdout`. The default value is `server.log`.

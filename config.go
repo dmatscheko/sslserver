@@ -57,6 +57,9 @@ type ServerConfig struct {
 	// If you jail the process, no file can exceed MaxCacheableFileSize.
 	JailProcess bool `yaml:"jail-process"`
 
+	// The directory in which to jail the process. Warning, the permissions for all files will be set to `a=r`, and for all directories to `a=rx`.
+	JailDirectory string `yaml:"jail-directory"`
+
 	// Log the client IP and URL path of each request.
 	LogRequests bool `yaml:"log-requests"`
 
@@ -91,6 +94,7 @@ var config = ServerConfig{
 	ServeFilesNotInCache:              false,
 	MaxCacheableFileSize:              10 * 1024 * 1024,
 	JailProcess:                       true,
+	JailDirectory:                     "jail",
 	LogRequests:                       true,
 	LogFile:                           "server.log",
 }
@@ -147,11 +151,34 @@ func readConfig() {
 	}
 
 	config.LogFile = filepath.Clean(config.LogFile)
-	fileInfo, err := os.Stat(config.LogFile)
-	if err != nil || fileInfo.Mode().IsDir() {
+	if fileInfo, err := os.Stat(config.LogFile); err != nil || fileInfo.Mode().IsDir() {
 		// There is an error or it is a directory but we need a file.
-		// Set it to empty to force stdout logging only.
+		// Set it to empty to disable file logging.
 		config.LogFile = ""
+	}
+
+	config.BaseDirectory = filepath.Clean(config.BaseDirectory)
+	if fileInfo, err := os.Stat(config.BaseDirectory); os.IsNotExist(err) {
+		// Create the directory if it doesn't exist.
+		if err := os.Mkdir(config.BaseDirectory, 0555); err != nil {
+			log.Fatal(err)
+		}
+	} else if err != nil || !fileInfo.Mode().IsDir() {
+		// There is an error or it is not a directory.
+		// Set it to "static" and hope for the best.
+		config.BaseDirectory = "static"
+	}
+
+	config.JailDirectory = filepath.Clean(config.JailDirectory)
+	if fileInfo, err := os.Stat(config.JailDirectory); os.IsNotExist(err) {
+		// Create the directory if it doesn't exist.
+		if err := os.Mkdir(config.JailDirectory, 0555); err != nil {
+			log.Fatal(err)
+		}
+	} else if err != nil || !fileInfo.Mode().IsDir() {
+		// There is an error or it is not a directory.
+		// Set it to "jail" and hope for the best.
+		config.JailDirectory = "jail"
 	}
 
 	printConfig(config)

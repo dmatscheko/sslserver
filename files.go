@@ -19,14 +19,14 @@ var fileCache = make(map[string][]byte)
 // fillCache reads all files in the given directory and its subdirectories
 // and stores their contents in the cache.
 func fillCache(dir string) error {
-	log.Println("Caching files...")
 	dir = filepath.Clean(dir)
 	return filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
+
 		if info.IsDir() {
-			return nil
+			return err
 		}
 
 		// Get the path without the web root directory for logging.
@@ -44,6 +44,7 @@ func fillCache(dir string) error {
 		if err != nil {
 			return err
 		}
+
 		log.Println(" ", trimmedPath)
 		fileCache[trimmedPath] = data
 		return nil
@@ -116,4 +117,26 @@ func serveFiles(w http.ResponseWriter, r *http.Request) {
 
 	// Write the file contents to the HTTP response.
 	http.ServeContent(w, r, path, time.Time{}, bytes.NewReader(data)) // TODO: change time to file date and also cache this
+}
+
+func setPermissions(dir string) error {
+	return filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		if info.IsDir() {
+			// Change the directory permissions to "rx".
+			err := os.Chmod(path, 0555)
+			return err
+		}
+
+		// Change the file permissions to "r".
+		err = os.Chmod(path, 0444)
+		if err != nil {
+			return err
+		}
+
+		return nil
+	})
 }

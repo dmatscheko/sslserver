@@ -19,10 +19,22 @@ func main() {
 	readConfig()
 
 	// Initialize (fill) the white list and the cert cache.
+	log.Println("Checking certificates...")
 	shortestDuration := initCertificates()
 
+	// Set permissions for the files and directores in (and including) the web root.
+	log.Println("Setting file permissions for web root")
+	err := setPermissions(config.BaseDirectory)
+	if err != nil {
+		log.Fatal("Could not set permissions:", err)
+	}
+
 	// Initialize (fill) the file cache.
-	fillCache(config.BaseDirectory)
+	log.Println("Caching files...")
+	err = fillCache(config.BaseDirectory)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	// Create a wait group with a count of 2.
 	// This indicates that we are waiting for two signals.
@@ -151,7 +163,7 @@ func main() {
 	isJailed := false
 	if config.JailProcess {
 		// Drop privileges and jail process if running on Linux.
-		isJailed = Jail()
+		isJailed = Jail(config.JailDirectory)
 	}
 
 	// Send a signal on the wait group when the server has been jailed.

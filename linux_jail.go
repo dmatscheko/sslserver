@@ -14,6 +14,7 @@ package main
 import (
 	"log"
 	"os"
+	"path/filepath"
 	"syscall"
 
 	"kernel.org/pub/linux/libs/security/libcap/cap"
@@ -21,9 +22,7 @@ import (
 
 // Jail drops the privileges of the process and restricts it to the specified
 // directory. It returns true to indicate that the program is now in a jail.
-func Jail() bool {
-	dirName := "./jail"
-
+func Jail(dir string) bool {
 	// Look up the user ID of the "nobody" user.
 	var uid int
 	var gid int
@@ -37,31 +36,37 @@ func Jail() bool {
 		gid = user.GID
 	}
 
+	// Make the path safe to use with the os.Open function.
+	dir = filepath.Clean(dir)
+
 	// Check if the directory exists.
-	if _, err := os.Stat(dirName); os.IsNotExist(err) {
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
 		// Create the directory if it doesn't exist.
-		if err := os.Mkdir(dirName, 0100); err != nil {
+		if err := os.Mkdir(dir, 0100); err != nil {
 			log.Fatal(err)
 		}
 	}
 
-	// Change the directory permissions to only "x".
-	err := os.Chmod(dirName, 0100)
+	log.Println("Setting file permissions for jail")
+	// Set file permissions for jail.
+	err := setPermissions(dir)
 	if err != nil {
-		log.Fatal(err)
-	}
-	// Change the working directory to dirName.
-	err = os.Chdir(dirName)
-	if err != nil {
-		log.Fatal("Chdir: ", err)
-	}
-	// Change the root directory to dirName.
-	err = syscall.Chroot(".")
-	if err != nil {
-		log.Fatal("Chroot: ", err)
+		log.Fatal("Could not set permissions:", err)
 	}
 
-	log.Printf("Dropping rights...")
+	// Change the working directory to dir.
+	err = os.Chdir(dir)
+	if err != nil {
+		log.Fatal("Chdir:", err)
+	}
+	// Change the root directory to dir.
+	log.Printf("Going to jail")
+	err = syscall.Chroot(".")
+	if err != nil {
+		log.Fatal("Chroot:", err)
+	}
+
+	log.Printf("Dropping rights")
 
 	// Drop all UID and GID rights of the process.
 	err = syscall.Setregid(gid, gid)
