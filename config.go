@@ -188,7 +188,7 @@ func readConfig() {
 	config.CertificateCacheDirectory = filepath.Clean(config.CertificateCacheDirectory)
 	if fileInfo, err := os.Stat(config.CertificateCacheDirectory); os.IsNotExist(err) {
 		// Create the directory if it doesn't exist.
-		if err := os.MkdirAll(config.CertificateCacheDirectory, 0744); err != nil { // The server has to be able to write certificates into this directory. It should not be inside the jail.
+		if err := os.MkdirAll(config.CertificateCacheDirectory, 0700); err != nil { // The server has to be able to write certificates into this directory. It should not be inside the jail or it will be set to read only.
 			log.Fatal(err)
 		}
 	} else if err != nil || !fileInfo.Mode().IsDir() {
