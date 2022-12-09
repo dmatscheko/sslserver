@@ -45,7 +45,7 @@ or (on Windows)
 At startup a `config.yml` is automatically created. Those are the values that can be changed:
 
 ### Basic settings
-* `base-directory`: This specifies the base directory (the web root) to serve static files from. The default value is `static`.
+* `base-directory`: This specifies the base directory (the web root) to serve static files from. Warning, the permissions for all files will be set to `a=r`, and for all directories to `a=rx`. The default value is `static`.
 * `http-addr`: This specifies the HTTP address to bind the server to. The default value is `:http`.
 * `https-addr`: This specifies the HTTPS address to bind the server to. The default value is `:https`.
 ### Certificate handling
