@@ -49,7 +49,10 @@ type ServerConfig struct {
 	// Maximum duration to wait for a response to complete.
 	MaxResponseTimeout time.Duration `yaml:"max-response-timeout"`
 
-	// Serve files if they are not cached in memory.
+	// Maximum duration to wait for a follow up request.
+	MaxIdleTimeout time.Duration `yaml:"max-idle-timeout"`
+
+	// Serve files if they are not cached in memory. If this is `false`, the server will not even try to read newer files into the cache.
 	ServeFilesNotInCache bool `yaml:"serve-files-not-in-cache"`
 
 	// Maximum size for files that are cached in memory.
@@ -95,6 +98,7 @@ var config = ServerConfig{
 	CertificateExpiryRefreshThreshold: 48 * time.Hour,
 	MaxRequestTimeout:                 15 * time.Second,
 	MaxResponseTimeout:                60 * time.Second,
+	MaxIdleTimeout:                    60 * time.Second,
 	ServeFilesNotInCache:              true,
 	MaxCacheableFileSize:              1024 * 1024,
 	JailProcess:                       true,
@@ -132,71 +136,10 @@ func readConfig() {
 		return
 	}
 
-	// Convert the service names to port numbers.
-	addr, err := net.ResolveTCPAddr("tcp", config.HttpAddr)
-	if err != nil {
-		config.HttpAddr = ":80"
-		log.Println("Warning: http-addr is invalid. Setting it to :80.")
-	} else {
-		config.HttpAddr = addr.String()
-	}
-	addr, err = net.ResolveTCPAddr("tcp", config.HttpsAddr)
-	if err != nil {
-		config.HttpsAddr = ":443"
-		log.Println("Warning: https-addr is invalid. Setting it to :443.")
-	} else {
-		config.HttpsAddr = addr.String()
-	}
-
 	// Sanity checks.
-	if config.CertificateExpiryRefreshThreshold < time.Hour {
-		config.CertificateExpiryRefreshThreshold = time.Hour
-		log.Println("Warning: duration-to-certificate-expiry-refresh is too low. Setting it to one hour.")
-	}
+	sanityChecks()
 
-	config.LogFile = filepath.Clean(config.LogFile)
-	if fileInfo, err := os.Stat(config.LogFile); err != nil || fileInfo.Mode().IsDir() {
-		// There is an error or it is a directory but we need a file.
-		// Set it to empty to disable file logging.
-		config.LogFile = ""
-	}
-
-	config.WebRootDirectory = filepath.Clean(config.WebRootDirectory)
-	if fileInfo, err := os.Stat(config.WebRootDirectory); os.IsNotExist(err) {
-		// Create the directory if it doesn't exist.
-		if err := os.MkdirAll(config.WebRootDirectory, 0555); err != nil {
-			log.Fatal(err)
-		}
-	} else if err != nil || !fileInfo.Mode().IsDir() {
-		// There is an error or it is not a directory.
-		// Set it to "jail/www_static" and hope for the best.
-		config.WebRootDirectory = "jail/www_static"
-	}
-
-	config.JailDirectory = filepath.Clean(config.JailDirectory)
-	if fileInfo, err := os.Stat(config.JailDirectory); os.IsNotExist(err) {
-		// Create the directory if it doesn't exist.
-		if err := os.MkdirAll(config.JailDirectory, 0555); err != nil {
-			log.Fatal(err)
-		}
-	} else if err != nil || !fileInfo.Mode().IsDir() {
-		// There is an error or it is not a directory.
-		// Set it to "jail" and hope for the best.
-		config.JailDirectory = "jail"
-	}
-
-	config.CertificateCacheDirectory = filepath.Clean(config.CertificateCacheDirectory)
-	if fileInfo, err := os.Stat(config.CertificateCacheDirectory); os.IsNotExist(err) {
-		// Create the directory if it doesn't exist.
-		if err := os.MkdirAll(config.CertificateCacheDirectory, 0700); err != nil { // The server has to be able to write certificates into this directory. It should not be inside the jail or it will be set to read only.
-			log.Fatal(err)
-		}
-	} else if err != nil || !fileInfo.Mode().IsDir() {
-		// There is an error or it is not a directory.
-		// Set it to "certcache" and hope for the best.
-		config.JailDirectory = "certcache"
-	}
-
+	// Print the resulting config.
 	printConfig(config)
 }
 
@@ -214,5 +157,76 @@ func printConfig(config ServerConfig) {
 
 		// Print the field name and its value.
 		log.Println("  "+yamlTag+":", reflect.ValueOf(config).Field(i).Interface())
+	}
+}
+
+func sanityChecks() {
+	// Ensure that the HttpAddr parameter is a valid address and convert its service name into the numeric port number.
+	// If it is not valid, set it to ":80".
+	addr, err := net.ResolveTCPAddr("tcp", config.HttpAddr)
+	if err != nil {
+		config.HttpAddr = ":80"
+		log.Println("Warning: http-addr is invalid. Setting it to :80.")
+	} else {
+		config.HttpAddr = addr.String()
+	}
+
+	// Ensure that the HttpsAddr parameter is a valid address and convert its service name into the numeric port number.
+	// If it is not valid, set it to ":443".
+	addr, err = net.ResolveTCPAddr("tcp", config.HttpsAddr)
+	if err != nil {
+		config.HttpsAddr = ":443"
+		log.Println("Warning: https-addr is invalid. Setting it to :443.")
+	} else {
+		config.HttpsAddr = addr.String()
+	}
+
+	// Ensure that the CertificateExpiryRefreshThreshold parameter has a minimum value of one hour.
+	if config.CertificateExpiryRefreshThreshold < time.Hour {
+		config.CertificateExpiryRefreshThreshold = time.Hour
+		log.Println("Warning: certificate-expiry-refresh-threshold is too low. Setting it to one hour.")
+	}
+
+	// Verify that the LogFile parameter is a valid file path to an existing file.
+	// If it is not valid, set it to an empty string to disable file logging.
+	config.LogFile = filepath.Clean(config.LogFile)
+	if fileInfo, err := os.Stat(config.LogFile); err != nil || fileInfo.Mode().IsDir() {
+		config.LogFile = ""
+	}
+
+	// Verify that the WebRootDirectory parameter is a valid path to an existing directory.
+	// Create the directory if it does not exist.
+	// If it is not valid, set it to "jail/www_static".
+	config.WebRootDirectory = filepath.Clean(config.WebRootDirectory)
+	if fileInfo, err := os.Stat(config.WebRootDirectory); os.IsNotExist(err) {
+		if err := os.MkdirAll(config.WebRootDirectory, 0555); err != nil {
+			log.Fatal(err)
+		}
+	} else if err != nil || !fileInfo.Mode().IsDir() {
+		config.WebRootDirectory = "jail/www_static"
+	}
+
+	// Verify that the JailDirectory parameter is a valid path to an existing directory.
+	// Create the directory if it does not exist.
+	// If it is not valid, set it to "jail".
+	config.JailDirectory = filepath.Clean(config.JailDirectory)
+	if fileInfo, err := os.Stat(config.JailDirectory); os.IsNotExist(err) {
+		if err := os.MkdirAll(config.JailDirectory, 0555); err != nil {
+			log.Fatal(err)
+		}
+	} else if err != nil || !fileInfo.Mode().IsDir() {
+		config.JailDirectory = "jail"
+	}
+
+	// Verify that the CertificateCacheDirectory parameter is a valid path to an existing directory.
+	// Create the directory if it does not exist.
+	// If it is not valid, set it to "jail".
+	config.CertificateCacheDirectory = filepath.Clean(config.CertificateCacheDirectory)
+	if fileInfo, err := os.Stat(config.CertificateCacheDirectory); os.IsNotExist(err) {
+		if err := os.MkdirAll(config.CertificateCacheDirectory, 0700); err != nil { // The server has to be able to write certificates into this directory. It should not be inside the jail or it will be set to read only.
+			log.Fatal(err)
+		}
+	} else if err != nil || !fileInfo.Mode().IsDir() {
+		config.JailDirectory = "certcache"
 	}
 }

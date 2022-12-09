@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"io/fs"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -14,7 +15,12 @@ import (
 // A map to store the contents of the files that have been served by the web
 // server. The map keys are the file paths, and the values are the contents of
 // the files.
-var fileCache = make(map[string][]byte)
+type CacheEntry struct {
+	File    []byte
+	ModTime time.Time
+}
+
+var fileCache = make(map[string]CacheEntry)
 
 // fillCache reads all files in the given directory and its subdirectories
 // and stores their contents in the cache.
@@ -46,7 +52,7 @@ func fillCache(dir string) error {
 		}
 
 		log.Println(" ", trimmedPath)
-		fileCache[trimmedPath] = data
+		fileCache[trimmedPath] = CacheEntry{File: data, ModTime: info.ModTime()}
 		return nil
 	})
 }
@@ -70,53 +76,104 @@ func serveFiles(w http.ResponseWriter, r *http.Request) {
 	}
 	// Make the path safe to use with the os.Open function.
 	path = filepath.Clean(path)
-	// Check if the file has already been read and cached.
-	data, ok := fileCache[path]
-	if !ok {
-		if !config.ServeFilesNotInCache {
-			log.Println("File not found:", path)
-			http.NotFound(w, r)
-			return
-		}
 
-		// The file has not been cached, so read it from disk.
+	// Check if the file has already been read and cached.
+	entry, isCached := fileCache[path]
+
+	// Try to open the file on the disk and read the file info.
+	if config.ServeFilesNotInCache {
+		cacheAgain := false
+		var info fs.FileInfo
+
 		pathOnFileSystem := filepath.Join(config.WebRootDirectory, path)
 		file, err := os.Open(pathOnFileSystem)
 		if err != nil {
-			log.Println("File not found:", path)
-			http.NotFound(w, r)
-			return
-		}
-		defer file.Close()
+			// If the file is cached, it does not matter that it can't be opened.
+			if !isCached {
+				log.Println("File not found:", path)
+				http.NotFound(w, r)
+				return
+			}
+		} else {
+			defer file.Close()
 
-		// Get the file info.
-		info, err := file.Stat()
-		if err != nil {
-			log.Println("File not found:", path)
-			http.NotFound(w, r)
-			return
-		}
-
-		// Get the file size in bytes.
-		size := info.Size()
-		if size > config.MaxCacheableFileSize {
-			// Serving large file contents to the HTTP response.
-			http.ServeContent(w, r, path, time.Time{}, file)
-			return
-		}
-
-		data, err = ioutil.ReadAll(file)
-		if err != nil {
-			log.Println("Could not read file:", path)
-			http.NotFound(w, r)
+			// Get the file info.
+			info, err = file.Stat()
+			if err != nil {
+				// If the file is cached, it does not matter that the stats can't be read.
+				if !isCached {
+					log.Println("File not found:", path)
+					http.NotFound(w, r)
+					return
+				}
+			} else {
+				if info.ModTime().After(entry.ModTime) {
+					cacheAgain = true
+				}
+			}
 		}
 
-		// Cache the file contents in memory.
-		fileCache[path] = data
+		// If the file is not already cached, or there is a newer one on the disk, read it.
+		if !isCached || cacheAgain {
+			if info == nil { // Info is nil, when the file could not be opened correctly.
+				log.Println("File not found:", path)
+				http.NotFound(w, r)
+				return
+			}
+
+			// Get the file size in bytes.
+			size := info.Size()
+			if size > config.MaxCacheableFileSize {
+				// Serving large file contents to the HTTP response.
+				addHeader(w)
+				http.ServeContent(w, r, path, info.ModTime(), file)
+				return
+			}
+
+			data, err := ioutil.ReadAll(file)
+			if err != nil {
+				log.Println("Could not read file:", path)
+				http.NotFound(w, r)
+			}
+
+			// Cache the file contents in memory.
+			log.Println("Updating new file into cache:", path)
+			entry = CacheEntry{File: data, ModTime: info.ModTime()}
+			fileCache[path] = entry
+		}
+	} else if !isCached {
+		log.Println("File not found:", path)
+		http.NotFound(w, r)
+		return
 	}
 
 	// Write the file contents to the HTTP response.
-	http.ServeContent(w, r, path, time.Time{}, bytes.NewReader(data)) // TODO: change time to file date and also cache this
+	addHeader(w)
+	http.ServeContent(w, r, path, entry.ModTime, bytes.NewReader(entry.File))
+}
+
+// addHeader adds the basic HTTP header.
+func addHeader(w http.ResponseWriter) {
+	// w.Header().Set("Strict-Transport-Security", "max-age=63072000; includeSubDomains")
+	w.Header().Set("Content-Security-Policy", "script-src 'self'")
+	w.Header().Set("X-Frame-Options", "DENY")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+
+	/*
+		// The server header is not needed.
+		w.Header().Set("Server", "dma-srv")
+		// The contenttype is added by ServeContent()
+		w.Header().Set("Content-Type", contenttype)
+		// Cache header are added by ServeContent()
+		if cache {
+			w.Header().Set("Cache-Control", "private, max-age=31536000")
+		} else {
+			w.Header().Set("Cache-control", "no-cache")
+			w.Header().Set("Cache-control", "no-store")
+			w.Header().Set("Pragma", "no-cache")
+			w.Header().Set("Expires", "0")
+		}
+	*/
 }
 
 func setPermissions(dir string) error {

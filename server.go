@@ -67,6 +67,7 @@ func main() {
 		Addr:         config.HttpAddr,
 		ReadTimeout:  config.MaxRequestTimeout,
 		WriteTimeout: config.MaxResponseTimeout,
+		IdleTimeout:  config.MaxIdleTimeout,
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Redirect the request to HTTPS.
 			http.Redirect(w, r, "https://"+r.Host+r.URL.Path, http.StatusFound) // TODO: get config.HttpsAddr and redirect to this port. Or better, create a config variable for this, because there can be a proxy in front.
@@ -114,6 +115,7 @@ func main() {
 		Addr:         config.HttpsAddr,
 		ReadTimeout:  config.MaxRequestTimeout,
 		WriteTimeout: config.MaxResponseTimeout,
+		IdleTimeout:  config.MaxIdleTimeout,
 		TLSConfig: &tls.Config{
 			// Set the GetCertificate callback for the TLS config to a function
 			// that tries to fetch a certificate.

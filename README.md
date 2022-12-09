@@ -57,8 +57,9 @@ At startup a `config.yml` is automatically created. Those are the values that ca
 ### HTTP timeouts
 * `max-request-timeout`: This specifies the maximum duration to wait for a request to complete. The default value is `15s` (15 seconds).
 * `max-response-timeout`: This specifies the maximum duration to wait for a response to complete. The default value is `60s` (60 seconds).
+* `max-idle-timeout`: This specifies the maximum duration to wait for a follow up request. The default value is `60s` (60 seconds).
 ### Jail dependent settings
-* `serve-files-not-in-cache`: This can only be `true`, if `jail-process` is set to `false`, or if the `web-root-directory` is inside the `jail-directory`. It determines whether to serve files that are not cached in memory. The default value is `false`.
+* `serve-files-not-in-cache`: This can only be `true`, if `jail-process` is set to `false`, or if the `web-root-directory` is inside the `jail-directory`. It determines whether to serve files that are not cached in memory. If this is `false`, the server will not even try to read newer files into the cache or serve big files directly from the disk. The default value is `false`.
 * `max-cacheable-file-size`: This specifies the maximum size for files that are cached in memory. Files can only be served, if they are cached (file size <= `max-cacheable-file-size`), or the `web-root-directory` is inside the `jail-directory`, or the server is NOT jailed. The default value is `1048576` (1 MB).
 * `jail-process`: This determines whether the process should be jailed. If a process is jailed, no file can be larger than the size specified in `max-cacheable-file-size`, or the `web-root-directory` must be inside the `jail-directory`. Jailing the process only works on Linux. On Windows, only the working directory is changed to the `jail-directory` to maintain similar directory access behavior to Linux in the settings. The default value is `true`.
 * `jail-directory`: The directory in which to jail the process. Warning, the permissions for all files will be set to `a=r`, and for all directories to `a=rx`. The default value is `jail`.
