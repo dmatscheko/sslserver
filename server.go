@@ -7,6 +7,8 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -162,6 +164,30 @@ func main() {
 
 	isJailed := false
 	if config.JailProcess {
+		// Convert the relative paths to absolute paths.
+		absoluteBaseDirectory, err := filepath.Abs(config.BaseDirectory)
+		if err != nil {
+			log.Fatalln("Could not get absolute path for web root:", err)
+			return
+		}
+		absoluteJailDirectory, err := filepath.Abs(config.JailDirectory)
+		if err != nil {
+			log.Fatalln("Could not get absolute path for jail:", err)
+			return
+		}
+
+		// If the web root is inside the jail, trim the jail directory part from the web root directory.
+		if strings.HasPrefix(absoluteBaseDirectory, absoluteJailDirectory) {
+			trimmedBaseDirectory := strings.TrimPrefix(absoluteBaseDirectory, absoluteJailDirectory)
+			if trimmedBaseDirectory == "" {
+				trimmedBaseDirectory = "."
+			}
+			log.Println("Base directory (web root) is inside the jail. Changing", config.BaseDirectory, "to", trimmedBaseDirectory)
+			config.BaseDirectory = trimmedBaseDirectory
+		} else {
+			log.Println("Base directory (web root) is not inside the jail. Cannot serve files above the max-cacheable-file-size")
+		}
+
 		// Drop privileges and jail process if running on Linux.
 		isJailed = Jail(config.JailDirectory)
 	}

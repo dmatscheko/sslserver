@@ -82,7 +82,7 @@ type ServerConfig struct {
 
 // Set the default values of the config variables.
 var config = ServerConfig{
-	BaseDirectory:                     "static",
+	BaseDirectory:                     "jail/www_static",
 	HttpAddr:                          ":http",
 	HttpsAddr:                         ":https",
 	LetsEncryptDomains:                []string{"example.com"},
@@ -91,8 +91,8 @@ var config = ServerConfig{
 	CertificateExpiryRefreshThreshold: 48 * time.Hour,
 	MaxRequestTimeout:                 15 * time.Second,
 	MaxResponseTimeout:                60 * time.Second,
-	ServeFilesNotInCache:              false,
-	MaxCacheableFileSize:              10 * 1024 * 1024,
+	ServeFilesNotInCache:              true,
+	MaxCacheableFileSize:              1024 * 1024,
 	JailProcess:                       true,
 	JailDirectory:                     "jail",
 	LogRequests:                       true,
@@ -165,8 +165,8 @@ func readConfig() {
 		}
 	} else if err != nil || !fileInfo.Mode().IsDir() {
 		// There is an error or it is not a directory.
-		// Set it to "static" and hope for the best.
-		config.BaseDirectory = "static"
+		// Set it to "jail/www_static" and hope for the best.
+		config.BaseDirectory = "jail/www_static"
 	}
 
 	config.JailDirectory = filepath.Clean(config.JailDirectory)

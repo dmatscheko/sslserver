@@ -45,7 +45,7 @@ or (on Windows)
 At startup a `config.yml` is automatically created. Those are the values that can be changed:
 
 ### Basic settings
-* `base-directory`: This specifies the base directory (the web root) to serve static files from. Warning, the permissions for all files will be set to `a=r`, and for all directories to `a=rx`. The default value is `static`.
+* `base-directory`: This specifies the base directory (usually the web root) to serve static files from. Warning, the permissions for all files will be set to `a=r`, and for all directories to `a=rx`. The default value is `jail/www_static`.
 * `http-addr`: This specifies the HTTP address to bind the server to. The default value is `:http`.
 * `https-addr`: This specifies the HTTPS address to bind the server to. The default value is `:https`.
 ### Certificate handling
@@ -57,9 +57,9 @@ At startup a `config.yml` is automatically created. Those are the values that ca
 * `max-request-timeout`: This specifies the maximum duration to wait for a request to complete. The default value is `15s` (15 seconds).
 * `max-response-timeout`: This specifies the maximum duration to wait for a response to complete. The default value is `60s` (60 seconds).
 ### Jail dependent settings
-* `serve-files-not-in-cache`: This can only be `true`, if `jail-process` is set to `false`. It determines whether to serve files that are not cached in memory. The default value is `false`.
-* `max-cacheable-file-size`: This specifies the maximum size for files that are cached in memory. If files are not cached, and the server is jailed, it is impossible to access the files. So, `jail-process` either has to be `false` or the `max-cacheable-file-size` has to be at least as large as the largest file. The default value is `10485760` (10 MB).
-* `jail-process`: This determines whether to jail the process. If a process is jailed, no file can be larger than the size specified in `max-cacheable-file-size`. This only works on Linux. The default value is `true`.
+* `serve-files-not-in-cache`: This can only be `true`, if `jail-process` is set to `false`, or if the `base-directory` is inside the `jail-directory`. It determines whether to serve files that are not cached in memory. The default value is `false`.
+* `max-cacheable-file-size`: This specifies the maximum size for files that are cached in memory. Files can only be served, if they are cached (file size <= `max-cacheable-file-size`), or the `base-directory` is inside the `jail-directory`, or the server is NOT jailed. The default value is `1048576` (1 MB).
+* `jail-process`: This determines whether the process should be jailed. If a process is jailed, no file can be larger than the size specified in `max-cacheable-file-size`, or the `base-directory` must be inside the `jail-directory`. Jailing the process only works on Linux. On Windows, only the working directory is changed to the `jail-directory` to maintain similar directory access behavior to Linux in the settings. The default value is `true`.
 * `jail-directory`: The directory in which to jail the process. Warning, the permissions for all files will be set to `a=r`, and for all directories to `a=rx`. The default value is `jail`.
 ### Logging
 * `log-requests`: Log the client IP and the URL path of each request. Warning, if `jail-process` is set to `true`, the logfiles can not be rotated and will grow indefinitely. The default value is `true`.
