@@ -62,7 +62,7 @@ At startup a `config.yml` is automatically created. Those are the values that ca
 * `jail-process`: This determines whether to jail the process. If a process is jailed, no file can be larger than the size specified in `max-cacheable-file-size`. This only works on Linux. The default value is `true`.
 ### Logging
 * `log-requests`: Log the client IP and the URL path of each request. Warning: If `jail-process` is set to `true`, the logfiles can not be rotated and will grow indefinitely. The default value is `true`.
-
+* `log-file`: The name of the log file. If the name is empty (= `""`), the log output will only be written to `stdout`. The default value is `server.log`.
 
 ## TODO
 

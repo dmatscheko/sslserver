@@ -4,6 +4,8 @@ import (
 	"io/ioutil"
 	"log"
 	"net"
+	"os"
+	"path/filepath"
 	"reflect"
 	"time"
 
@@ -58,6 +60,9 @@ type ServerConfig struct {
 	// Log the client IP and URL path of each request.
 	LogRequests bool `yaml:"log-requests"`
 
+	// The name of the log file. If the name is empty, the log output will only be written to stdout.
+	LogFile string `yaml:"log-file"`
+
 	/*
 		TODO: Maybe:
 
@@ -87,6 +92,7 @@ var config = ServerConfig{
 	MaxCacheableFileSize:              10 * 1024 * 1024,
 	JailProcess:                       true,
 	LogRequests:                       true,
+	LogFile:                           "server.log",
 }
 
 func readConfig() {
@@ -138,6 +144,14 @@ func readConfig() {
 	if config.CertificateExpiryRefreshThreshold < time.Hour {
 		config.CertificateExpiryRefreshThreshold = time.Hour
 		log.Println("Warning: duration-to-certificate-expiry-refresh is too low. Setting it to one hour.")
+	}
+
+	config.LogFile = filepath.Clean(config.LogFile)
+	fileInfo, err := os.Stat(config.LogFile)
+	if err != nil || fileInfo.Mode().IsDir() {
+		// There is an error or it is a directory but we need a file.
+		// Set it to empty to force stdout logging only.
+		config.LogFile = ""
 	}
 
 	printConfig(config)

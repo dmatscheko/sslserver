@@ -8,8 +8,13 @@ import (
 )
 
 func initLogging() {
+	// Return if no log file should be written.
+	if config.LogFile == "" {
+		return
+	}
+
 	// Open the log file for appending.
-	f, err := os.OpenFile("server.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	f, err := os.OpenFile(config.LogFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -28,19 +33,19 @@ func initLogging() {
 		go func() {
 			for range time.Tick(24 * time.Hour) {
 				// Remove the oldest log file.
-				os.Remove("server.log.3")
+				os.Remove(config.LogFile + ".3")
 
 				// Closing the current log file is not necessary,
 				// because os.Rename() closes the file automatically.
 				// f.Close()
 
 				// Rename the log files.
-				os.Rename("server.log.2", "server.log.3")
-				os.Rename("server.log.1", "server.log.2")
-				os.Rename("server.log", "server.log.1")
+				os.Rename(config.LogFile+".2", config.LogFile+".3")
+				os.Rename(config.LogFile+".1", config.LogFile+".2")
+				os.Rename(config.LogFile, config.LogFile+".1")
 
 				// Create a new log file.
-				f, err := os.Create("server.log")
+				f, err := os.Create(config.LogFile)
 				if err != nil {
 					log.Fatal(err)
 				}

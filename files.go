@@ -28,11 +28,22 @@ func fillCache(dir string) error {
 		if info.IsDir() {
 			return nil
 		}
+
+		// Get the path without the web root directory for logging.
+		trimmedPath := strings.TrimPrefix(path, dir)
+
+		// Get the file size in bytes.
+		size := info.Size()
+		if size > config.MaxCacheableFileSize {
+			// File is to large for caching.
+			log.Println(" Warning, file too large for caching:", trimmedPath)
+			return nil
+		}
+
 		data, err := ioutil.ReadFile(path)
 		if err != nil {
 			return err
 		}
-		trimmedPath := strings.TrimPrefix(path, dir)
 		log.Println(" ", trimmedPath)
 		fileCache[trimmedPath] = data
 		return nil
