@@ -15,7 +15,9 @@
 # vendor/
 
 # Test files, program and program output
-static/*
-certcache/*
+static
+jail
+certcache
 sslserver
 config.yml
+server.log*
