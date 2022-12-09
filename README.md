@@ -18,7 +18,7 @@ A web server that serves static files over HTTPS, manages TLS certificates, has 
 
 ### Security measures
 
-- If compiled and executed on Linux, drops all privileges and jails itself in the `./jail` subdirectory.
+- If compiled and executed on Linux, the server drops all privileges and jails itself in the `./jail` subdirectory.
 
 ### Timer and shutdown
 
