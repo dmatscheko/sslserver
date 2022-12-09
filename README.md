@@ -69,9 +69,6 @@ At startup a `config.yml` is automatically created. Those are the values that ca
 
 ## TODO
 
-* Set the correct caching headers.
-* Implement security relevant HTTP headers.
 * Test the behavior of Let's Encrypt when it is unable to store its certificates to the file system. Maybe it crashes.
-* Maybe find a way to write log files. Open the log file before activating jail?
 * Consider also storing the self-signed certificates.
 * Implement a way to restart the application from within the application itself.
