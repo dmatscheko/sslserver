@@ -13,7 +13,7 @@ A web server that serves static files over HTTPS, manages TLS certificates, has 
 ### TLS certificate management
 
 - Automatically fetches TLS certificates from Let's Encrypt.
-- Creates a self signed certificate if Let's Encrypt is unreachable or denies a certificate for an white listed domain.
+- Creates a self signed certificate if Let's Encrypt is unreachable or denies a certificate for a white listed domain.
 - You need to configure the white listed domains.
 
 ### Security measures
@@ -64,6 +64,7 @@ At startup a `config.yml` is automatically created. Those are the values that ca
 
 ## TODO
 
+* Create configured directories if they don't exist.
 * Set the correct caching headers.
 * Implement security relevant HTTP headers.
 * Test the behavior of Let's Encrypt when it is unable to store its certificates to the file system. Maybe it crashes.
