@@ -8,8 +8,9 @@ import (
 )
 
 func initLogging() {
-	// Return if no log file should be written.
-	if config.LogFile == "" {
+	// Return if no log file should be written. Logging will still be done to stdout.
+	if config.LogFile == "" || isChild {
+		log.SetOutput(os.Stdout)
 		return
 	}
 
@@ -32,6 +33,12 @@ func initLogging() {
 		// Rotate the log files every day.
 		go func() {
 			for range time.Tick(24 * time.Hour) {
+				fileInfo, err := f.Stat()
+				if err == nil && fileInfo.Size() < 5*1024*1024 {
+					// Only rotate log files if they are too big.
+					continue
+				}
+
 				// Remove the oldest log file.
 				os.Remove(config.LogFile + ".3")
 

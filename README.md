@@ -20,12 +20,6 @@ A web server that serves static files over HTTPS, manages TLS certificates, has 
 
 - If compiled and executed on Linux, the server drops all privileges and jails itself in the `./jail` subdirectory.
 
-### Timer and shutdown
-
-- Loads all SSL certificates at startup and retrieves their expiration time.
-- If configured to do so, the web server terminates a configured duration before the first SSL certificate expires.
-- In this case, you have to restart the server with a script, it then creates a new Let's Encrypt certificate.
-
 ## Build and run
 
     go run .
@@ -52,7 +46,6 @@ At startup a `config.yml` is automatically created. Those are the values that ca
 * `lets-encrypt-domains`: This is a white list of domains that are allowed to fetch a Let's Encrypt certificate. The default value is `- example.com`.
 * `self-signed-domains`: This is a white list of domains for which self-signed certificates are allowed. The domains for Let's Encrypt are automatically added to this list, but you can include additional domains that are only allowed for self-signed certificates. The default value is `- localhost`, `- 127.0.0.1`.
 * `certificate-cache-directory`: Let's Encrypt certificates are stored in this directory. The server has to be able to write certificates into this directory. It should therefore not be inside the jail or it will be set to read only. The default value is `certcache`.
-* `terminate-on-certificate-expiry`: This determines whether the program should exit when a certificate is about to expire. If set to true, this allows caching the certificates to the hard disk after the next start. Note that an external script will have to restart the server. Also note, that the server will only be restarted on Linux, because it doesn't make sense to do so on Windows. The reason is, that the jail doesn't work on Windows. The default value is `false`.
 * `certificate-expiry-refresh-threshold`: This specifies, how long before their expiration the certificates should be renewed. The default value is `48h0m0s` (48 hours).
 ### HTTP timeouts
 * `max-request-timeout`: This specifies the maximum duration to wait for a request to complete. The default value is `15s` (15 seconds).

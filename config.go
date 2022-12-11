@@ -34,12 +34,6 @@ type ServerConfig struct {
 	// Let's Encrypt certificates are stored in this directory.
 	CertificateCacheDirectory string `yaml:"certificate-cache-directory"`
 
-	// Set to true if the program should exit when a certificate is about to expire.
-	// This allows to cache the certificates to the hard disk after the next start.
-	// Note 1: An external script has to restart the server!
-	// Note 2: The server will only restart on Linux, because it makes no sense on Windows.
-	TerminateOnCertificateExpiry bool `yaml:"terminate-on-certificate-expiry"`
-
 	// Renew certificates, if they expire within this duration.
 	CertificateExpiryRefreshThreshold time.Duration `yaml:"certificate-expiry-refresh-threshold"`
 
@@ -94,7 +88,6 @@ var config = ServerConfig{
 	LetsEncryptDomains:                []string{"example.com"},
 	SelfSignedDomains:                 []string{"localhost", "127.0.0.1"},
 	CertificateCacheDirectory:         "certcache",
-	TerminateOnCertificateExpiry:      false,
 	CertificateExpiryRefreshThreshold: 48 * time.Hour,
 	MaxRequestTimeout:                 15 * time.Second,
 	MaxResponseTimeout:                60 * time.Second,

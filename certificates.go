@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/tls"
@@ -22,16 +23,90 @@ var allowedDomainsSelfSignedWhiteList map[string]bool = nil
 // certCache holds the cached self signed TLS certificates.
 var certCache map[string]*tls.Certificate = nil
 
+// certCacheBytes holds the cached PEM-encoded Let's Encrypt TLS certificates.
+var certCacheBytes map[string][]byte = nil
+
 // Create a new autocert manager.
 var m = &autocert.Manager{
-	Cache:       autocert.DirCache(config.CertificateCacheDirectory),
+	Cache:       DirCache(""),
 	Prompt:      autocert.AcceptTOS,
 	HostPolicy:  autocert.HostWhitelist(config.LetsEncryptDomains...),
 	RenewBefore: config.CertificateExpiryRefreshThreshold + 24*time.Hour, // This way, RenewBefore is always longer than the certificate expiry timeout when the server terminates.
 }
 
+//
+// ===========================================
+//
+
+// DirCache implements Cache using a directory on the local filesystem.
+// If the directory does not exist, it will be created with 0700 permissions.
+type DirCache string
+
+// Get reads a certificate data from the specified file name.
+func (d DirCache) Get(ctx context.Context, name string) ([]byte, error) {
+	cert := certCacheBytes[name]
+	if cert != nil {
+		return cert, nil
+	}
+
+	command := Command{Type: cmdGet, Name: name}
+	childToParentCh <- command
+
+	for response := range parentToChildCh {
+		// Handle the command from the child program.
+		switch response.Type {
+		case cmdGet:
+			// Handle the "get" command
+			if response.Name != name {
+				continue
+			}
+
+			if len(response.Data) == 0 {
+				return nil, autocert.ErrCacheMiss
+			}
+
+			certCacheBytes[name] = response.Data
+
+			return response.Data, nil
+		default:
+			// Do nothing. // TODO: To not return here could lead to a locked state.
+		}
+	}
+
+	return nil, autocert.ErrCacheMiss
+}
+
+// Put writes the certificate data to the specified file name.
+// The file will be created with 0600 permissions.
+func (d DirCache) Put(ctx context.Context, name string, data []byte) error {
+	if len(data) == 0 {
+		return errors.New("Could not store certificate data: " + name)
+	}
+
+	certCacheBytes[name] = data
+
+	command := Command{Type: cmdPut, Name: name, Data: data}
+	childToParentCh <- command
+
+	return nil
+}
+
+// Delete removes the specified file name.
+func (d DirCache) Delete(ctx context.Context, name string) error {
+	certCacheBytes[name] = nil
+
+	command := Command{Type: cmdDelete, Name: name, Data: nil}
+	childToParentCh <- command
+
+	return nil
+}
+
+//
+// ===========================================
+//
+
 // initCertificates initializes the white list of domains for self signed certificates and also the cache for the self signed certificates.
-func initCertificates() time.Duration {
+func initCertificates() {
 	// Add the domains for Let's Encrypt to the domains for which self signed certificates can be created.
 	config.SelfSignedDomains = append(config.SelfSignedDomains, config.LetsEncryptDomains...)
 
@@ -45,10 +120,11 @@ func initCertificates() time.Duration {
 
 	// Initialize the cache for the self signed certificates.
 	certCache = make(map[string]*tls.Certificate, len(allowedDomainsSelfSignedWhiteList))
+	certCacheBytes = make(map[string][]byte, len(config.LetsEncryptDomains))
 
 	// Initialize certificates before going to jail.
-	var shortestDuration time.Duration = 10 * 365 * 24 * time.Hour // Initial duration is 10 years which should be longer than any certificate expiration.
 	for _, serverName := range config.SelfSignedDomains {
+
 		cert, err := getCertificate(&tls.ClientHelloInfo{ServerName: serverName})
 		if err != nil {
 			log.Println("Error when initializing certificate for:", serverName, "\nError:", err)
@@ -66,20 +142,7 @@ func initCertificates() time.Duration {
 
 		// Set the cache.
 		certCache[serverName] = cert
-
-		// Get the expiration time of the SSL certificate.
-		expiration := cert.Leaf.NotAfter
-		// Convert it into the duration from now.
-		duration := time.Until(expiration)
-		// Substract the durationToCertificateExpiryRefresh.
-		duration = duration - config.CertificateExpiryRefreshThreshold
-
-		if shortestDuration > duration {
-			shortestDuration = duration
-		}
 	}
-
-	return shortestDuration
 }
 
 // getTLSCert creates a self-signed TLS certificate.
@@ -170,6 +233,7 @@ func getCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
 	if err != nil {
 		return nil, errors.New("self signed cert: server name contains invalid character")
 	}
+
 	if certCache[name] != nil {
 		// Parse the certificate from a PEM-encoded byte slice.
 		if certCache[name].Leaf == nil {

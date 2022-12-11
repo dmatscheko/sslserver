@@ -6,38 +6,16 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 )
 
-func main() {
-	// Initialize the output for the logger.
-	initLogging()
+var httpServer *http.Server
+var httpsServer *http.Server
 
-	// Read config file.
-	readConfig()
-
-	// Initialize (fill) the white list and the cert cache.
-	log.Println("Checking certificates...")
-	shortestDuration := initCertificates()
-
-	// Set permissions for the files and directores in (and including) the web root.
-	log.Println("Setting file permissions for web root")
-	err := setPermissions(config.WebRootDirectory)
-	if err != nil {
-		log.Fatal("Could not set permissions:", err)
-	}
-
-	// Initialize (fill) the file cache.
-	log.Println("Caching files...")
-	err = fillCache(config.WebRootDirectory)
-	if err != nil {
-		log.Fatal(err)
-	}
-
+func runServer() {
 	// Create a wait group with a count of 2.
 	// This indicates that we are waiting for two signals.
 	// The two signals will be sent when the two servers have finished binding to their addresses.
@@ -63,7 +41,7 @@ func main() {
 	//
 
 	// Create an HTTP server that redirects all requests to HTTPS.
-	httpServer := &http.Server{
+	httpServer = &http.Server{
 		Addr:         config.HttpAddr,
 		ReadTimeout:  config.MaxRequestTimeout,
 		WriteTimeout: config.MaxResponseTimeout,
@@ -111,7 +89,7 @@ func main() {
 	//
 
 	// Create an HTTPS server that serves files from the "static" directory.
-	httpsServer := &http.Server{
+	httpsServer = &http.Server{
 		Addr:         config.HttpsAddr,
 		ReadTimeout:  config.MaxRequestTimeout,
 		WriteTimeout: config.MaxResponseTimeout,
@@ -164,7 +142,6 @@ func main() {
 	// ========
 	//
 
-	isJailed := false
 	if config.JailProcess {
 		// Convert the relative paths to absolute paths.
 		absoluteBaseDirectory, err := filepath.Abs(config.WebRootDirectory)
@@ -191,28 +168,16 @@ func main() {
 		}
 
 		// Drop privileges and jail process if running on Linux.
-		isJailed = Jail(config.JailDirectory)
+		Jail(config.JailDirectory)
 	}
 
 	// Send a signal on the wait group when the server has been jailed.
 	wgJailed.Done()
 
-	// If in jail, restart to be able to potentially read and write the Let's Encrypt certificates.
-	if isJailed && config.TerminateOnCertificateExpiry { // We don't need `&& runtime.GOOS == "linux"`, because isJailed can only be true under linux.
-		// Set a timer to durationBeforeCertificateExpiryRefresh before the first SSL certificate expires.
-		timer := time.NewTimer(shortestDuration)
-		log.Printf("Set timer to expire in %s.\n", shortestDuration)
+	// Close both server.	// TODO: do this on signal terminate.
+	// terminateServer(httpServer, httpsServer)
 
-		log.Println("Serving files ...")
-
-		// Wait for the timer to expire.
-		<-timer.C
-
-		// Close both server.
-		terminateServer(httpServer, httpsServer)
-	} else {
-		log.Println("Serving files ...")
-	}
+	log.Println("Serving files ...")
 
 	// Wait for the wait group to reach zero.
 	// This will happen when both the HTTP and the HTTPS server terminate.
@@ -225,8 +190,6 @@ func main() {
 	//
 
 	log.Println("Server terminated.")
-
-	os.Exit(0)
 }
 
 // terminateServer shuts down the given servers with a timeout of 10 seconds.
@@ -234,7 +197,7 @@ func main() {
 // This function calls the http.Server.Shutdown() method for each server and passes in
 // a context with a timeout. If the server has not completed shutdown by the end of the
 // timeout, the context is cancelled and the server is terminated immediately.
-func terminateServer(servers ...*http.Server) {
+func terminateServerList(servers ...*http.Server) {
 	// Create a context with a timeout of 10 seconds.
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel() // Cancel the context when the function returns.
@@ -262,4 +225,8 @@ func terminateServer(servers ...*http.Server) {
 	// Wait for the wait group to reach zero.
 	// This will happen when all servers have shut down or the timeout has been reached.
 	wgShutdown.Wait()
+}
+
+func terminateServer() {
+	terminateServerList(httpServer, httpsServer)
 }
