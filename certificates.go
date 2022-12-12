@@ -52,13 +52,15 @@ func (d DirCache) Get(ctx context.Context, name string) ([]byte, error) {
 	command := Command{Type: cmdGet, Name: name}
 	childToParentCh <- command
 
-	for response := range parentToChildCh {
+	// Wait for a response message from the parentToChildCh channel or the timeout.
+	select {
+	case response := <-parentToChildCh:
 		// Handle the command from the child program.
 		switch response.Type {
 		case cmdGet:
 			// Handle the "get" command
 			if response.Name != name {
-				continue
+				break
 			}
 
 			if len(response.Data) == 0 {
@@ -69,8 +71,11 @@ func (d DirCache) Get(ctx context.Context, name string) ([]byte, error) {
 
 			return response.Data, nil
 		default:
-			// Do nothing. // TODO: To not return here could lead to a locked state.
+			// Do nothing.
 		}
+	case <-time.After(5 * time.Second):
+		// Handle the timeout by returning an error.
+		return nil, errors.New("Timeout while waiting for response from parent")
 	}
 
 	return nil, autocert.ErrCacheMiss
@@ -80,7 +85,7 @@ func (d DirCache) Get(ctx context.Context, name string) ([]byte, error) {
 // The file will be created with 0600 permissions.
 func (d DirCache) Put(ctx context.Context, name string, data []byte) error {
 	if len(data) == 0 {
-		return errors.New("Could not store certificate data: " + name)
+		return errors.New("Could not store certificate: " + name)
 	}
 
 	certCacheBytes[name] = data
@@ -149,7 +154,7 @@ func initCertificates() {
 func getTLSCert(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
 	name := hello.ServerName
 	if name == "" {
-		return nil, errors.New("self signed cert: missing server name")
+		return nil, errors.New("Self signed cert: missing server name")
 	}
 
 	// Note that this conversion is necessary because some server names in the handshakes
@@ -162,12 +167,12 @@ func getTLSCert(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
 	// idna.Punycode.ToASCII (or just idna.ToASCII) here.
 	name, err := idna.Lookup.ToASCII(name)
 	if err != nil {
-		return nil, errors.New("self signed cert: server name contains invalid character")
+		return nil, errors.New("Self signed cert: server name contains invalid character")
 	}
 
 	// Check if the domain name is in the white list.
 	if !allowedDomainsSelfSignedWhiteList[name] {
-		return nil, errors.New("self signed cert: server name not in white list: " + name)
+		return nil, errors.New("Self signed cert: server name not in white list: " + name)
 	}
 
 	// Generate a new private key.
@@ -219,7 +224,7 @@ func getCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
 	// Get domain name.
 	name := hello.ServerName
 	if name == "" {
-		return nil, errors.New("self signed cert: missing server name")
+		return nil, errors.New("Self signed cert: missing server name")
 	}
 	// Note that this conversion is necessary because some server names in the handshakes
 	// started by some clients (such as cURL) are not converted to Punycode, which will
@@ -231,7 +236,7 @@ func getCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
 	// idna.Punycode.ToASCII (or just idna.ToASCII) here.
 	name, err := idna.Lookup.ToASCII(name)
 	if err != nil {
-		return nil, errors.New("self signed cert: server name contains invalid character")
+		return nil, errors.New("Self signed cert: server name contains invalid character")
 	}
 
 	if certCache[name] != nil {

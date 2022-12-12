@@ -20,4 +20,5 @@ jail
 certcache
 sslserver
 config.yml
-server.log*
+*.log
+*.log.*

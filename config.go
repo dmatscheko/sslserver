@@ -131,9 +131,6 @@ func readConfig() {
 
 	// Sanity checks.
 	sanityChecks()
-
-	// Print the resulting config.
-	printConfig(config)
 }
 
 func printConfig(config ServerConfig) {
@@ -183,7 +180,7 @@ func sanityChecks() {
 	// Verify that the LogFile parameter is a valid file path to an existing file.
 	// If it is not valid, set it to an empty string to disable file logging.
 	config.LogFile = filepath.Clean(config.LogFile)
-	if fileInfo, err := os.Stat(config.LogFile); err != nil || fileInfo.Mode().IsDir() {
+	if fileInfo, _ := os.Stat(config.LogFile); fileInfo != nil && fileInfo.Mode().IsDir() {
 		config.LogFile = ""
 	}
 
@@ -191,35 +188,40 @@ func sanityChecks() {
 	// Create the directory if it does not exist.
 	// If it is not valid, set it to "jail/www_static".
 	config.WebRootDirectory = filepath.Clean(config.WebRootDirectory)
-	if fileInfo, err := os.Stat(config.WebRootDirectory); os.IsNotExist(err) {
+	if fileInfo, _ := os.Stat(config.WebRootDirectory); fileInfo != nil && !fileInfo.Mode().IsDir() {
+		config.WebRootDirectory = "jail/www_static"
+	}
+	if _, err := os.Stat(config.WebRootDirectory); os.IsNotExist(err) {
 		if err := os.MkdirAll(config.WebRootDirectory, 0555); err != nil {
 			log.Fatal(err)
 		}
-	} else if err != nil || !fileInfo.Mode().IsDir() {
-		config.WebRootDirectory = "jail/www_static"
 	}
 
 	// Verify that the JailDirectory parameter is a valid path to an existing directory.
 	// Create the directory if it does not exist.
 	// If it is not valid, set it to "jail".
 	config.JailDirectory = filepath.Clean(config.JailDirectory)
-	if fileInfo, err := os.Stat(config.JailDirectory); os.IsNotExist(err) {
+	if fileInfo, _ := os.Stat(config.JailDirectory); fileInfo != nil && !fileInfo.Mode().IsDir() {
+		config.JailDirectory = "jail"
+	}
+	if _, err := os.Stat(config.JailDirectory); os.IsNotExist(err) {
 		if err := os.MkdirAll(config.JailDirectory, 0555); err != nil {
 			log.Fatal(err)
 		}
-	} else if err != nil || !fileInfo.Mode().IsDir() {
-		config.JailDirectory = "jail"
 	}
 
 	// Verify that the CertificateCacheDirectory parameter is a valid path to an existing directory.
 	// Create the directory if it does not exist.
-	// If it is not valid, set it to "jail".
+	// If it is not valid, set it to "certcache".
 	config.CertificateCacheDirectory = filepath.Clean(config.CertificateCacheDirectory)
-	if fileInfo, err := os.Stat(config.CertificateCacheDirectory); os.IsNotExist(err) {
-		if err := os.MkdirAll(config.CertificateCacheDirectory, 0700); err != nil { // The server has to be able to write certificates into this directory. It should not be inside the jail or it will be set to read only.
+	if fileInfo, _ := os.Stat(config.CertificateCacheDirectory); fileInfo != nil && !fileInfo.Mode().IsDir() {
+		// The server has to be able to write certificates into this directory.
+		// It should not be inside the jail or it will be set to read only.
+		config.CertificateCacheDirectory = "certcache"
+	}
+	if _, err := os.Stat(config.CertificateCacheDirectory); os.IsNotExist(err) {
+		if err := os.MkdirAll(config.CertificateCacheDirectory, 0700); err != nil {
 			log.Fatal(err)
 		}
-	} else if err != nil || !fileInfo.Mode().IsDir() {
-		config.JailDirectory = "certcache"
 	}
 }

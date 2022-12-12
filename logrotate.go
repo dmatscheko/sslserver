@@ -8,9 +8,20 @@ import (
 )
 
 func initLogging() {
-	// Return if no log file should be written. Logging will still be done to stdout.
-	if config.LogFile == "" || isChild {
+	// Set default logging pattern.
+	log.SetFlags(log.LstdFlags)
+
+	// Add C for child and P for parent.
+	if isChild {
+		log.SetPrefix("C ")
+		// Set log output of child to stdout.
 		log.SetOutput(os.Stdout)
+		return
+	}
+	log.SetPrefix("P ")
+
+	// Return if no log file should be written. Logging will still be done to stdout.
+	if config.LogFile == "" {
 		return
 	}
 

@@ -24,6 +24,7 @@ type Command struct {
 	Data []byte
 }
 
+// Command types.
 const (
 	cmdGet       = "[get]"
 	cmdPut       = "[put]"
@@ -47,19 +48,24 @@ func main() {
 		}
 	}
 
-	// Initialize the output for the logger.
-	initLogging()
-
 	// Read config file.
 	readConfig()
+
+	// Initialize the output for the logger.
+	initLogging()
 
 	if isChild {
 		log.Println("This program is the child")
 		initChild()
 	} else {
+		// Print the config.
+		printConfig(config)
+
 		log.Println("This program is the parent")
 		initParent()
 	}
+
+	os.Exit(0)
 }
 
 // This is the parent program that handles the certificate storage and logging.
@@ -184,7 +190,8 @@ func initParent() {
 	log.Println("Setting trap to exit when child exits")
 	go func() {
 		cmd.Wait()
-		os.Exit(0)
+		// Closing the child-to-parent-channel, so that the command loop terminates and so the program.
+		close(childToParentCh)
 	}()
 
 	log.Println("Waiting for commands")
@@ -215,7 +222,11 @@ func initParent() {
 				log.Println("Could not delete certificate:", err)
 			}
 		default:
+			log.SetPrefix("")
+			log.SetFlags(0)
 			log.Println(command.Type)
+			log.SetPrefix("P ")
+			log.SetFlags(log.LstdFlags)
 		}
 	}
 }
@@ -337,9 +348,4 @@ func initChild() {
 	}
 
 	runServer()
-
-	os.Exit(0)
 }
-
-// TODO: if the parent receives ctrl+C, sigterm, etc, it should send a terminate command to the child (the server).
-// TODO: if the child terminates, the parent should exit too, but with the error level of the child.
