@@ -154,7 +154,7 @@ func serveFiles(w http.ResponseWriter, r *http.Request) {
 
 // addHeader adds the basic HTTP header.
 func addHeader(w http.ResponseWriter) {
-	// w.Header().Set("Strict-Transport-Security", "max-age=63072000; includeSubDomains")
+	w.Header().Set("Strict-Transport-Security", "max-age=63072000; includeSubDomains")
 	w.Header().Set("Content-Security-Policy", "script-src 'self'")
 	w.Header().Set("X-Frame-Options", "DENY")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
