@@ -50,6 +50,7 @@ func fillCache(dir string) error {
 
 		// Get the path without the web root directory
 		trimmedPath := strings.TrimPrefix(path, config.WebRootDirectory)
+		trimmedPath = strings.TrimPrefix(trimmedPath, "/")
 
 		// Get the file size in bytes
 		size := info.Size()
