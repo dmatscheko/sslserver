@@ -39,22 +39,22 @@ func fillCache(dir string) error {
 			return nil
 		}
 
-		dir2, err := filepath.EvalSymlinks(dir)
+		path2, err := filepath.EvalSymlinks(path)
 		if err != nil {
 			return err
 		}
-
-		if dir != dir2 {
-			log.Fatalf("Directory is symlink - not supported yet: %s -> %s\n", dir, dir2)
+		if path != path2 {
+			log.Printf("Directory is symlink - not supported yet: %s -> %s\n", path, path2)
+			return nil
 		}
 
-		// Get the path without the web root directory for logging.
-		trimmedPath := strings.TrimPrefix(path, dir)
+		// Get the path without the web root directory
+		trimmedPath := strings.TrimPrefix(path, config.WebRootDirectory)
 
-		// Get the file size in bytes.
+		// Get the file size in bytes
 		size := info.Size()
 		if size > config.MaxCacheableFileSize {
-			// File is to large for caching.
+			// File is to large for caching
 			log.Println(" Warning, file too large for caching:", trimmedPath)
 			return nil
 		}

@@ -27,12 +27,7 @@ var certCache map[string]*tls.Certificate = nil
 var certCacheBytes map[string][]byte = nil
 
 // Create a new autocert manager.
-var m = &autocert.Manager{
-	Cache:       DirCache(""),
-	Prompt:      autocert.AcceptTOS,
-	HostPolicy:  autocert.HostWhitelist(config.letsEncryptDomains...),
-	RenewBefore: config.CertificateExpiryRefreshThreshold + 24*time.Hour, // This way, RenewBefore is always longer than the certificate expiry timeout when the server terminates.
-}
+var m = &autocert.Manager{}
 
 //
 // ===========================================
@@ -112,6 +107,14 @@ func (d DirCache) Delete(ctx context.Context, name string) error {
 
 // initCertificates initializes the white list of domains for self signed certificates and also the cache for the self signed certificates.
 func initCertificates() {
+	// Create a new autocert manager.
+	m = &autocert.Manager{
+		Cache:       DirCache(""),
+		Prompt:      autocert.AcceptTOS,
+		HostPolicy:  autocert.HostWhitelist(config.letsEncryptDomains...),
+		RenewBefore: config.CertificateExpiryRefreshThreshold + 24*time.Hour, // This way, RenewBefore is always longer than the certificate expiry timeout when the server terminates.
+	}
+
 	// Initialize the white list of domains for self signed certificates.
 	allowedDomainsSelfSignedWhiteList = make(map[string]bool, len(config.SelfSignedDomains))
 	for _, h := range config.SelfSignedDomains {
@@ -125,7 +128,7 @@ func initCertificates() {
 	certCacheBytes = make(map[string][]byte, len(config.letsEncryptDomains))
 
 	// Initialize certificates before going to jail.
-	for _, serverName := range config.SelfSignedDomains {
+	for serverName := range config.allDomains {
 
 		cert, err := getCertificate(&tls.ClientHelloInfo{ServerName: serverName})
 		if err != nil {
@@ -268,6 +271,9 @@ func getCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
 		// Return the certificate if successful.
 		return cert, nil
 	}
+	// else {
+	// log.Println("Error:", err)
+	// }
 
 	// If autocert returned any error, create a self-signed certificate.
 	cert, err = GetSelfSignedCertificate(hello)
