@@ -22,16 +22,16 @@ A web server that serves static files over HTTPS, manages TLS certificates, has 
 
 ## Build and run
 
-    go run .
+    go run
 
 or (on Linux)
 
-    go build .
+    go build
     sudo ./start.sh
 
 or (on Windows)
 
-    go build .
+    go build
     sslserver
 
 ## Configuration
@@ -43,8 +43,8 @@ At startup a `config.yml` is automatically created. Those are the values that ca
 * `http-addr`: This specifies the HTTP address to bind the server to. The default value is `:http`.
 * `https-addr`: This specifies the HTTPS address to bind the server to. The default value is `:https`.
 ### Certificate handling
-* `lets-encrypt-domains`: This is a white list of domains that are allowed to fetch a Let's Encrypt certificate. The default value is `- example.com`.
-* `self-signed-domains`: This is a white list of domains for which self-signed certificates are allowed. The domains for Let's Encrypt are automatically added to this list, but you can include additional domains that are only allowed for self-signed certificates. The default value is `- localhost`, `- 127.0.0.1`.
+* `lets-encrypt-domains`: This is a white list of domains that are allowed to fetch a Let's Encrypt certificate. The default value is empty.
+* `self-signed-domains`: This is a white list of domains for which self-signed certificates are allowed. The domains for Let's Encrypt are automatically added to this list, but you can include additional domains that are only allowed for self-signed certificates. The default value is `localhost`, `127.0.0.1`.
 * `certificate-cache-directory`: Let's Encrypt certificates are stored in this directory. The server has to be able to write certificates into this directory. It should therefore not be inside the jail or it will be set to read only. The default value is `certcache`.
 * `certificate-expiry-refresh-threshold`: This specifies, how long before their expiration the certificates should be renewed. The default value is `48h0m0s` (48 hours).
 ### HTTP timeouts

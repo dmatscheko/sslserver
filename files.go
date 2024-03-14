@@ -7,7 +7,9 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -32,7 +34,7 @@ func fillCache(dir string) error {
 		}
 
 		if info.IsDir() {
-			return err
+			return nil
 		}
 
 		// Get the path without the web root directory for logging.
@@ -57,40 +59,74 @@ func fillCache(dir string) error {
 	})
 }
 
+// for serveFiles
+var matchPath = regexp.MustCompile(`^(/[a-zA-Z0-9_-]+)+(\.[a-zA-Z0-9]+)+$`).MatchString
+
 // The serveFiles function is used as the handler for the "/" URL pattern.
 // It reads the contents of the requested file from disk (or from the cache if
 // it has already been read), and writes the contents to the HTTP response.
 func serveFiles(w http.ResponseWriter, r *http.Request) {
-	// Get the file path from the URL.
-	path := r.URL.Path
+	// Extract URL path and domain from the request
+	urlPath := r.URL.Path
+	domain := r.Host
 
 	// Get the IP address of the client.
 	clientIP := r.RemoteAddr
 	if config.LogRequests {
-		log.Println("Request:", clientIP, "", path)
+		log.Println("Request:", clientIP, "", urlPath)
 	}
 
-	// The root is "/index.html".
-	if path == "/" {
-		path = "/index.html"
+	// Set default domain if none provided
+	if domain == "" {
+		domain = "nodomain"
 	}
-	// Make the path safe to use with the os.Open function.
-	path = filepath.Clean(path)
+
+	// Check if the domain is allowed
+	allowed := false
+	for _, allowedDomain := range config.allDomains {
+		if domain == allowedDomain {
+			allowed = true
+			break
+		}
+	}
+	if !allowed {
+		http.NotFound(w, r)
+		return
+	}
+
+	// Clean the URL path for security
+	if urlPath != path.Clean(urlPath) {
+		http.NotFound(w, r)
+		return
+	}
+
+	// Set default file to index.html if URL path is root
+	if urlPath == "/" {
+		urlPath = "/index.html"
+	}
+
+	// Check if the URL path matches the expected file pattern
+	if !matchPath(urlPath) {
+		http.NotFound(w, r)
+		return
+	}
+
+	// Prepend domain and webroot to the URL path to get the file path
+	filePath := filepath.FromSlash(domain + urlPath)
 
 	// Check if the file has already been read and cached.
-	entry, isCached := fileCache[path]
+	entry, isCached := fileCache[filePath]
 
 	// Try to open the file on the disk and read the file info.
 	if config.ServeFilesNotInCache {
 		cacheAgain := false
 		var info fs.FileInfo
 
-		pathOnFileSystem := filepath.Join(config.WebRootDirectory, path)
-		file, err := os.Open(pathOnFileSystem)
+		file, err := os.Open(filePath)
 		if err != nil {
 			// If the file is cached, it does not matter that it can't be opened.
 			if !isCached {
-				log.Println("File not found:", path)
+				log.Println("File not found:", domain+urlPath)
 				http.NotFound(w, r)
 				return
 			}
@@ -102,7 +138,7 @@ func serveFiles(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				// If the file is cached, it does not matter that the stats can't be read.
 				if !isCached {
-					log.Println("File not found:", path)
+					log.Println("File not found:", domain+urlPath)
 					http.NotFound(w, r)
 					return
 				}
@@ -116,7 +152,7 @@ func serveFiles(w http.ResponseWriter, r *http.Request) {
 		// If the file is not already cached, or there is a newer one on the disk, read it.
 		if !isCached || cacheAgain {
 			if info == nil { // Info is nil, when the file could not be opened correctly.
-				log.Println("File not found:", path)
+				log.Println("File not found:", domain+urlPath)
 				http.NotFound(w, r)
 				return
 			}
@@ -125,50 +161,60 @@ func serveFiles(w http.ResponseWriter, r *http.Request) {
 			size := info.Size()
 			if size > config.MaxCacheableFileSize {
 				// Serving large file contents to the HTTP response.
-				addHeader(w)
-				http.ServeContent(w, r, path, info.ModTime(), file)
+				addHeaders(w)
+				http.ServeContent(w, r, urlPath, info.ModTime(), file)
 				return
 			}
 
 			data, err := ioutil.ReadAll(file)
 			if err != nil {
-				log.Println("Could not read file:", path)
+				log.Println("Could not read file:", domain+urlPath)
 				http.NotFound(w, r)
 			}
 
 			// Cache the file contents in memory.
-			log.Println("Updating new file into cache:", path)
+			log.Println("Updating new file into cache:", domain+urlPath)
 			entry = CacheEntry{File: data, ModTime: info.ModTime()}
-			fileCache[path] = entry
+			fileCache[filePath] = entry
 		}
 	} else if !isCached {
-		log.Println("File not found:", path)
+		log.Println("File not found:", domain+urlPath)
 		http.NotFound(w, r)
 		return
 	}
 
 	// Write the file contents to the HTTP response.
-	addHeader(w)
-	http.ServeContent(w, r, path, entry.ModTime, bytes.NewReader(entry.File))
+	addHeaders(w)
+	http.ServeContent(w, r, urlPath, entry.ModTime, bytes.NewReader(entry.File))
 }
 
-// addHeader adds the basic HTTP header.
-func addHeader(w http.ResponseWriter) {
-	w.Header().Set("Strict-Transport-Security", "max-age=63072000; includeSubDomains")
-	w.Header().Set("Content-Security-Policy", "script-src 'self'")
-	w.Header().Set("X-Frame-Options", "DENY")
-	w.Header().Set("X-Content-Type-Options", "nosniff")
+// addHeaders adds basic HTTP headers to the response.
+func addHeaders(w http.ResponseWriter) {
+	if config.ServerName != "" {
+		w.Header().Set("Server", config.ServerName)
+	}
+
+	// Add common security headers
+	if config.HttpHeaderXContentTypeOptions != "" {
+		w.Header().Set("X-Content-Type-Options", config.HttpHeaderXContentTypeOptions)
+	}
+	if config.HttpHeaderStrictTransportSecurity != "" {
+		w.Header().Set("Strict-Transport-Security", config.HttpHeaderStrictTransportSecurity)
+	}
+	if config.HttpHeaderContentSecurityPolicy != "" {
+		w.Header().Set("Content-Security-Policy", config.HttpHeaderContentSecurityPolicy)
+	}
+	if config.HttpHeaderXFrameOptions != "" {
+		w.Header().Set("X-Frame-Options", config.HttpHeaderXFrameOptions)
+	}
 
 	/*
-		// The server header is not needed.
-		w.Header().Set("Server", "dma-srv")
 		// The contenttype is added by ServeContent()
 		w.Header().Set("Content-Type", contenttype)
 		// Cache header are added by ServeContent()
 		if cache {
-			w.Header().Set("Cache-Control", "private, max-age=31536000")
+			w.Header().Set("Cache-Control", "max-age=300")
 		} else {
-			w.Header().Set("Cache-control", "no-cache")
 			w.Header().Set("Cache-control", "no-store")
 			w.Header().Set("Pragma", "no-cache")
 			w.Header().Set("Expires", "0")

@@ -7,7 +7,6 @@ import (
 	"net"
 	"net/http"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 )
@@ -142,34 +141,16 @@ func runServer() {
 	// ========
 	//
 
-	if config.JailProcess {
-		// Convert the relative paths to absolute paths.
-		absoluteBaseDirectory, err := filepath.Abs(config.WebRootDirectory)
-		if err != nil {
-			log.Fatalln("Could not get absolute path for web root:", err)
-			return
-		}
-		absoluteJailDirectory, err := filepath.Abs(config.JailDirectory)
-		if err != nil {
-			log.Fatalln("Could not get absolute path for jail:", err)
-			return
-		}
+	// Jail process as good as possible
 
-		// If the web root is inside the jail, trim the jail directory part from the web root directory.
-		if strings.HasPrefix(absoluteBaseDirectory, absoluteJailDirectory) {
-			trimmedBaseDirectory := strings.TrimPrefix(absoluteBaseDirectory, absoluteJailDirectory)
-			if trimmedBaseDirectory == "" {
-				trimmedBaseDirectory = "."
-			}
-			log.Println("Base directory (web root) is inside the jail. Changing", config.WebRootDirectory, "to", trimmedBaseDirectory)
-			config.WebRootDirectory = trimmedBaseDirectory
-		} else {
-			log.Println("Base directory (web root) is not inside the jail. Cannot serve files above the max-cacheable-file-size")
-		}
-
-		// Drop privileges and jail process if running on Linux.
-		Jail(config.JailDirectory)
+	// Convert the relative path to an absolute path.
+	absoluteBaseDirectory, err := filepath.Abs(config.WebRootDirectory)
+	if err != nil {
+		log.Fatalln("Could not get absolute path for web root:", err)
 	}
+
+	// Remove write permissions, drop privileges and jail process if running on Linux. Only remove write permissions on windows.
+	Jail(absoluteBaseDirectory)
 
 	// Send a signal on the wait group when the server has been jailed.
 	wgJailed.Done()

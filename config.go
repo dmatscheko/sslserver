@@ -14,7 +14,12 @@ import (
 
 type ServerConfig struct {
 	// The base directory (the web root) to serve static files from.
+	// Warning, the permissions for all files will be set to `a=r`, and for all directories to `a=rx`.
+	// This is also the directory in which to jail the process on Linux.
 	WebRootDirectory string `yaml:"web-root-directory"`
+
+	// Let's Encrypt certificates are stored in this directory.
+	CertificateCacheDirectory string `yaml:"certificate-cache-directory"`
 
 	// The HTTP address to bind the server to.
 	HttpAddr string `yaml:"http-addr"`
@@ -24,15 +29,25 @@ type ServerConfig struct {
 
 	// Let's Encrypt white list.
 	// These domains are allowed to fetch a Let's Encrypt certificate.
-	LetsEncryptDomains []string `yaml:"lets-encrypt-domains"`
+	// This is not directly configurable. Instead, the domain directories in www_static will be used
+	// to populate this, and then SelfSignedDomains will be substracted.
+	letsEncryptDomains []string
 
 	// Self signed certificates white list.
-	// The domains for Let's Encrypt are automatically added to this list,
-	// but you can include domains that are only allowed for self signed certificates.
+	// For this domains, no certificate will be fetched from Let's Encrypt.
 	SelfSignedDomains []string `yaml:"self-signed-domains"`
 
-	// Let's Encrypt certificates are stored in this directory.
-	CertificateCacheDirectory string `yaml:"certificate-cache-directory"`
+	// All allowed domains. This are LetsEncryptDomains + SelfSignedDomains.
+	allDomains []string
+
+	// Name of the web server used as Server header.
+	ServerName string `yaml:"server-name"`
+
+	// Security http headers.
+	HttpHeaderXContentTypeOptions     string `yaml:"http-header-x-content-type-options"`
+	HttpHeaderStrictTransportSecurity string `yaml:"http-header-strict-transport-security"`
+	HttpHeaderContentSecurityPolicy   string `yaml:"http-header-content-security-policy"`
+	HttpHeaderXFrameOptions           string `yaml:"http-header-x-frame-options"`
 
 	// Renew certificates, if they expire within this duration.
 	CertificateExpiryRefreshThreshold time.Duration `yaml:"certificate-expiry-refresh-threshold"`
@@ -50,15 +65,7 @@ type ServerConfig struct {
 	ServeFilesNotInCache bool `yaml:"serve-files-not-in-cache"`
 
 	// Maximum size for files that are cached in memory.
-	// If files are not cached, and the server jails itself, it might be impossible to access the files.
 	MaxCacheableFileSize int64 `yaml:"max-cacheable-file-size"`
-
-	// Whether to jail the process or not.
-	// If you jail the process, no file can exceed MaxCacheableFileSize.
-	JailProcess bool `yaml:"jail-process"`
-
-	// The directory in which to jail the process. Warning, the permissions for all files will be set to `a=r`, and for all directories to `a=rx`.
-	JailDirectory string `yaml:"jail-directory"`
 
 	// Log the client IP and URL path of each request.
 	LogRequests bool `yaml:"log-requests"`
@@ -82,20 +89,24 @@ type ServerConfig struct {
 
 // Set the default values of the config variables.
 var config = ServerConfig{
-	WebRootDirectory:                  "jail/www_static",
+	WebRootDirectory:                  "www_static",
+	CertificateCacheDirectory:         "certcache",
 	HttpAddr:                          ":http",
 	HttpsAddr:                         ":https",
-	LetsEncryptDomains:                []string{"example.com"},
+	letsEncryptDomains:                []string{},
 	SelfSignedDomains:                 []string{"localhost", "127.0.0.1"},
-	CertificateCacheDirectory:         "certcache",
+	allDomains:                        []string{},
+	ServerName:                        "dma-srv",
+	HttpHeaderXContentTypeOptions:     "nosniff",
+	HttpHeaderStrictTransportSecurity: "max-age=63072000; includeSubDomains",
+	HttpHeaderContentSecurityPolicy:   "script-src 'self'",
+	HttpHeaderXFrameOptions:           "DENY",
 	CertificateExpiryRefreshThreshold: 48 * time.Hour,
 	MaxRequestTimeout:                 15 * time.Second,
 	MaxResponseTimeout:                60 * time.Second,
 	MaxIdleTimeout:                    60 * time.Second,
 	ServeFilesNotInCache:              true,
 	MaxCacheableFileSize:              1024 * 1024,
-	JailProcess:                       true,
-	JailDirectory:                     "jail",
 	LogRequests:                       true,
 	LogFile:                           "server.log",
 }
@@ -141,12 +152,17 @@ func printConfig(config ServerConfig) {
 
 	// Iterate over all the fields of the config variable.
 	for i := 0; i < t.NumField(); i++ {
-		// Get the field and its yaml tag.
-		field := t.Field(i)
-		yamlTag := field.Tag.Get("yaml")
+		// Get the config entries name field and its yaml tag.
+		nameField := t.Field(i)
+		yamlTag := nameField.Tag.Get("yaml")
 
-		// Print the field name and its value.
-		log.Println("  "+yamlTag+":", reflect.ValueOf(config).Field(i).Interface())
+		// Get the config entries value field.
+		valueField := reflect.ValueOf(config).Field(i)
+
+		if valueField.CanInterface() && yamlTag != "" {
+			// Print the field name and its value.
+			log.Println("  "+yamlTag+":", valueField.Interface())
+		}
 	}
 }
 
@@ -186,26 +202,13 @@ func sanityChecks() {
 
 	// Verify that the WebRootDirectory parameter is a valid path to an existing directory.
 	// Create the directory if it does not exist.
-	// If it is not valid, set it to "jail/www_static".
+	// If it is not valid, set it to "www_static".
 	config.WebRootDirectory = filepath.Clean(config.WebRootDirectory)
 	if fileInfo, _ := os.Stat(config.WebRootDirectory); fileInfo != nil && !fileInfo.Mode().IsDir() {
-		config.WebRootDirectory = "jail/www_static"
+		config.WebRootDirectory = "www_static"
 	}
 	if _, err := os.Stat(config.WebRootDirectory); os.IsNotExist(err) {
 		if err := os.MkdirAll(config.WebRootDirectory, 0555); err != nil {
-			log.Fatal(err)
-		}
-	}
-
-	// Verify that the JailDirectory parameter is a valid path to an existing directory.
-	// Create the directory if it does not exist.
-	// If it is not valid, set it to "jail".
-	config.JailDirectory = filepath.Clean(config.JailDirectory)
-	if fileInfo, _ := os.Stat(config.JailDirectory); fileInfo != nil && !fileInfo.Mode().IsDir() {
-		config.JailDirectory = "jail"
-	}
-	if _, err := os.Stat(config.JailDirectory); os.IsNotExist(err) {
-		if err := os.MkdirAll(config.JailDirectory, 0555); err != nil {
 			log.Fatal(err)
 		}
 	}
@@ -224,4 +227,44 @@ func sanityChecks() {
 			log.Fatal(err)
 		}
 	}
+
+	// Fill the directory white list for which to create Let's Encrypt certificates
+	config.letsEncryptDomains = getAllowedDomainsFromSubdirectories(config.WebRootDirectory, config.SelfSignedDomains)
+	if len(config.letsEncryptDomains) == 0 && len(config.SelfSignedDomains) == 0 {
+		log.Fatal("Error: No domain directories specified in web root")
+	}
+
+	// Set all allowed domains
+	config.allDomains = append(config.letsEncryptDomains, config.SelfSignedDomains...)
+}
+
+// getAllowedDomainsFromSubdirectories retrieves allowed domains from subdirectories in the webroot directory.
+func getAllowedDomainsFromSubdirectories(webrootDir string, selfSignedDomains []string) []string {
+	var domains []string
+
+	files, err := os.ReadDir(webrootDir)
+	if err != nil {
+		log.Println("Error reading directory:", err)
+		return domains
+	}
+
+	for _, file := range files {
+		resolvedFile, err := os.Stat(filepath.FromSlash(webrootDir + "/" + file.Name()))
+		if err != nil {
+			log.Println("Error reading directory:", err)
+			return domains
+		}
+
+		if resolvedFile.IsDir() {
+			domain := file.Name()
+			for _, selfSignedDomain := range selfSignedDomains {
+				if domain == selfSignedDomain {
+					continue
+				}
+			}
+			domains = append(domains, domain)
+		}
+	}
+
+	return domains
 }

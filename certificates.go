@@ -30,7 +30,7 @@ var certCacheBytes map[string][]byte = nil
 var m = &autocert.Manager{
 	Cache:       DirCache(""),
 	Prompt:      autocert.AcceptTOS,
-	HostPolicy:  autocert.HostWhitelist(config.LetsEncryptDomains...),
+	HostPolicy:  autocert.HostWhitelist(config.letsEncryptDomains...),
 	RenewBefore: config.CertificateExpiryRefreshThreshold + 24*time.Hour, // This way, RenewBefore is always longer than the certificate expiry timeout when the server terminates.
 }
 
@@ -113,7 +113,7 @@ func (d DirCache) Delete(ctx context.Context, name string) error {
 // initCertificates initializes the white list of domains for self signed certificates and also the cache for the self signed certificates.
 func initCertificates() {
 	// Add the domains for Let's Encrypt to the domains for which self signed certificates can be created.
-	config.SelfSignedDomains = append(config.SelfSignedDomains, config.LetsEncryptDomains...)
+	config.SelfSignedDomains = append(config.SelfSignedDomains, config.letsEncryptDomains...)
 
 	// Initialize the white list of domains for self signed certificates.
 	allowedDomainsSelfSignedWhiteList = make(map[string]bool, len(config.SelfSignedDomains))
@@ -125,7 +125,7 @@ func initCertificates() {
 
 	// Initialize the cache for the self signed certificates.
 	certCache = make(map[string]*tls.Certificate, len(allowedDomainsSelfSignedWhiteList))
-	certCacheBytes = make(map[string][]byte, len(config.LetsEncryptDomains))
+	certCacheBytes = make(map[string][]byte, len(config.letsEncryptDomains))
 
 	// Initialize certificates before going to jail.
 	for _, serverName := range config.SelfSignedDomains {

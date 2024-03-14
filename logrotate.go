@@ -4,7 +4,6 @@ import (
 	"io"
 	"log"
 	"os"
-	"time"
 )
 
 func initLogging() {
@@ -39,41 +38,45 @@ func initLogging() {
 	// Modify the output of the default logger.
 	log.SetOutput(w)
 
-	// Log rotation only works, when the server is not in a jail.
-	if !config.JailProcess {
-		// Rotate the log files every day.
-		go func() {
-			for range time.Tick(24 * time.Hour) {
-				fileInfo, err := f.Stat()
-				if err == nil && fileInfo.Size() < 5*1024*1024 {
-					// Only rotate log files if they are too big.
-					continue
+	/*
+		// Log rotation only works, when the server is not in a jail.
+		// TODO: move logging into parent
+		if !config.JailProcess {
+			// Rotate the log files every day.
+			go func() {
+				for range time.Tick(24 * time.Hour) {
+					fileInfo, err := f.Stat()
+					if err == nil && fileInfo.Size() < 5*1024*1024 {
+						// Only rotate log files if they are too big.
+						continue
+					}
+
+					// Remove the oldest log file.
+					os.Remove(config.LogFile + ".3")
+
+					// Closing the current log file is not necessary,
+					// because os.Rename() closes the file automatically.
+					// f.Close()
+
+					// Rename the log files.
+					os.Rename(config.LogFile+".2", config.LogFile+".3")
+					os.Rename(config.LogFile+".1", config.LogFile+".2")
+					os.Rename(config.LogFile, config.LogFile+".1")
+
+					// Create a new log file.
+					f, err := os.Create(config.LogFile)
+					if err != nil {
+						log.Fatal(err)
+					}
+
+					// Create a writer that writes to the log file and to stdout.
+					w = io.MultiWriter(f, os.Stdout)
+
+					// Modify the output of the default logger.
+					log.SetOutput(w)
 				}
+			}()
+		}
+	*/
 
-				// Remove the oldest log file.
-				os.Remove(config.LogFile + ".3")
-
-				// Closing the current log file is not necessary,
-				// because os.Rename() closes the file automatically.
-				// f.Close()
-
-				// Rename the log files.
-				os.Rename(config.LogFile+".2", config.LogFile+".3")
-				os.Rename(config.LogFile+".1", config.LogFile+".2")
-				os.Rename(config.LogFile, config.LogFile+".1")
-
-				// Create a new log file.
-				f, err := os.Create(config.LogFile)
-				if err != nil {
-					log.Fatal(err)
-				}
-
-				// Create a writer that writes to the log file and to stdout.
-				w = io.MultiWriter(f, os.Stdout)
-
-				// Modify the output of the default logger.
-				log.SetOutput(w)
-			}
-		}()
-	}
 }
