@@ -112,9 +112,6 @@ func (d DirCache) Delete(ctx context.Context, name string) error {
 
 // initCertificates initializes the white list of domains for self signed certificates and also the cache for the self signed certificates.
 func initCertificates() {
-	// Add the domains for Let's Encrypt to the domains for which self signed certificates can be created.
-	config.SelfSignedDomains = append(config.SelfSignedDomains, config.letsEncryptDomains...)
-
 	// Initialize the white list of domains for self signed certificates.
 	allowedDomainsSelfSignedWhiteList = make(map[string]bool, len(config.SelfSignedDomains))
 	for _, h := range config.SelfSignedDomains {
@@ -150,8 +147,8 @@ func initCertificates() {
 	}
 }
 
-// getTLSCert creates a self-signed TLS certificate.
-func getTLSCert(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
+// GetSelfSignedCertificate creates a self-signed TLS certificate.
+func GetSelfSignedCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
 	name := hello.ServerName
 	if name == "" {
 		return nil, errors.New("Self signed cert: missing server name")
@@ -273,7 +270,7 @@ func getCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
 	}
 
 	// If autocert returned any error, create a self-signed certificate.
-	cert, err = getTLSCert(hello)
+	cert, err = GetSelfSignedCertificate(hello)
 	if err == nil {
 		log.Println("  Created self signed certificate for:", name)
 		certCache[name] = cert

@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"time"
 
+	"golang.org/x/net/idna"
 	"gopkg.in/yaml.v3"
 )
 
@@ -38,7 +39,7 @@ type ServerConfig struct {
 	SelfSignedDomains []string `yaml:"self-signed-domains"`
 
 	// All allowed domains. This are LetsEncryptDomains + SelfSignedDomains.
-	allDomains []string
+	allDomains map[string]bool
 
 	// Name of the web server used as Server header.
 	ServerName string `yaml:"server-name"`
@@ -95,7 +96,7 @@ var config = ServerConfig{
 	HttpsAddr:                         ":https",
 	letsEncryptDomains:                []string{},
 	SelfSignedDomains:                 []string{"localhost", "127.0.0.1"},
-	allDomains:                        []string{},
+	allDomains:                        nil,
 	ServerName:                        "dma-srv",
 	HttpHeaderXContentTypeOptions:     "nosniff",
 	HttpHeaderStrictTransportSecurity: "max-age=63072000; includeSubDomains",
@@ -235,7 +236,21 @@ func sanityChecks() {
 	}
 
 	// Set all allowed domains
-	config.allDomains = append(config.letsEncryptDomains, config.SelfSignedDomains...)
+	config.allDomains = make(map[string]bool, len(config.letsEncryptDomains)+len(config.SelfSignedDomains))
+	for _, h := range config.letsEncryptDomains {
+		if h, err := idna.Lookup.ToASCII(h); err == nil {
+			config.allDomains[h] = true
+		} else {
+			log.Fatalf("Error: Domain '%s' has invalid characters", h)
+		}
+	}
+	for _, h := range config.SelfSignedDomains {
+		if h, err := idna.Lookup.ToASCII(h); err == nil {
+			config.allDomains[h] = true
+		} else {
+			log.Fatalf("Error: Domain '%s' has invalid characters", h)
+		}
+	}
 }
 
 // getAllowedDomainsFromSubdirectories retrieves allowed domains from subdirectories in the webroot directory.

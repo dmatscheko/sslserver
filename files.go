@@ -12,6 +12,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"golang.org/x/net/idna"
 )
 
 // A map to store the contents of the files that have been served by the web
@@ -82,14 +84,12 @@ func serveFiles(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check if the domain is allowed
-	allowed := false
-	for _, allowedDomain := range config.allDomains {
-		if domain == allowedDomain {
-			allowed = true
-			break
-		}
+	domain, err := idna.Lookup.ToASCII(domain)
+	if err != nil {
+		http.NotFound(w, r)
+		return
 	}
-	if !allowed {
+	if !config.allDomains[domain] {
 		http.NotFound(w, r)
 		return
 	}
