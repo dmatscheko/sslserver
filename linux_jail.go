@@ -69,16 +69,15 @@ func Jail(jailDir string) bool {
 		log.Fatal("Chroot:", err)
 	}
 
-	log.Printf("Dropping rights")
-
-	// Drop all UID and GID rights of the process.
+	// Switch UID and GID rights of the process to user user.UID and user.GID.
+	log.Printf("Switching to user", uid, ",", gid)
 	err = syscall.Setregid(gid, gid)
 	if err != nil {
-		log.Fatalf("failed to drop REGID rights: %v", err)
+		log.Fatalf("failed to switch REGID rights: %v", err)
 	}
 	err = syscall.Setreuid(uid, uid)
 	if err != nil {
-		log.Fatalf("failed to drop REUID rights: %v", err)
+		log.Fatalf("failed to switch REUID rights: %v", err)
 	}
 
 	// Drop any privilege a process might have (including for root,
