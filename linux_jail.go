@@ -70,7 +70,7 @@ func Jail(jailDir string) bool {
 	}
 
 	// Switch UID and GID rights of the process to user user.UID and user.GID.
-	log.Printf("Switching to user %d, %d", uid, gid)
+	log.Printf("Switching to new user (UID: %d GID: %d)", uid, gid)
 	err = syscall.Setregid(gid, gid)
 	if err != nil {
 		log.Fatalf("failed to switch REGID rights: %v", err)
