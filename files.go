@@ -28,6 +28,7 @@ var fileCache = make(map[string]CacheEntry)
 
 // fillCache reads all files in the given directory and its subdirectories
 // and stores their contents in the cache.
+// TODO: Either don't use fillCache or first read all main folders (domains) and then read in them, following symlinks, but only after being jailed.
 func fillCache(dir string) error {
 	dir = filepath.Clean(dir)
 	return filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
