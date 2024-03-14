@@ -9,27 +9,27 @@ import (
 	"path/filepath"
 )
 
-func Jail(dir string) bool {
+func Jail(jailDir string) bool {
 	// Make the path safe to use with the os.Open function.
-	dir = filepath.Clean(dir)
+	jailDir = filepath.Clean(jailDir)
 
 	// Check if the directory exists.
-	if _, err := os.Stat(dir); os.IsNotExist(err) {
+	if _, err := os.Stat(jailDir); os.IsNotExist(err) {
 		// Create the directory if it doesn't exist.
-		if err := os.MkdirAll(dir, 0555); err != nil {
+		if err := os.MkdirAll(jailDir, 0555); err != nil {
 			log.Fatal(err)
 		}
 	}
 
-	log.Println("Setting file permissions for jail")
+	log.Println("Setting file permissions for web root to read only")
 	// Set file permissions for jail.
-	err := setPermissions(dir)
+	err := setPermissions(jailDir)
 	if err != nil {
 		log.Fatal("Could not set permissions:", err)
 	}
 
 	// Change the working directory to dir.
-	err = os.Chdir(dir)
+	err = os.Chdir(jailDir)
 	if err != nil {
 		log.Fatal("Chdir: ", err)
 	}

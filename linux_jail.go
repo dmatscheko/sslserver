@@ -22,11 +22,14 @@ import (
 
 // Jail drops the privileges of the process and restricts it to the specified
 // directory. It returns true to indicate that the program is now in a jail.
-func Jail(dir string) bool {
-	// Look up the user ID of the "nobody" user.
+func Jail(jailDir string) bool {
+	// Look up the user ID of the "www" user and if that fails of the "nobody" user.
 	var uid int
 	var gid int
-	user := Getpwnam("nobody")
+	user := Getpwnam("www")
+	if user == nil {
+		user = Getpwnam("nobody")
+	}
 	if user == nil {
 		log.Printf("Error looking up UID and GID for `nobody`. Falling back to 65534 for both.")
 		uid = 65534
@@ -37,25 +40,25 @@ func Jail(dir string) bool {
 	}
 
 	// Make the path safe to use with the os.Open function.
-	dir = filepath.Clean(dir)
+	jailDir = filepath.Clean(jailDir)
 
 	// Check if the directory exists.
-	if _, err := os.Stat(dir); os.IsNotExist(err) {
+	if _, err := os.Stat(jailDir); os.IsNotExist(err) {
 		// Create the directory if it doesn't exist.
-		if err := os.MkdirAll(dir, 0555); err != nil {
+		if err := os.MkdirAll(jailDir, 0555); err != nil {
 			log.Fatal(err)
 		}
 	}
 
-	log.Println("Setting file permissions for jail")
+	log.Println("Setting file permissions for jail to read only")
 	// Set file permissions for jail.
-	err := setPermissions(dir)
+	err := setPermissions(jailDir)
 	if err != nil {
 		log.Fatal("Could not set permissions:", err)
 	}
 
 	// Change the working directory to dir.
-	err = os.Chdir(dir)
+	err = os.Chdir(jailDir)
 	if err != nil {
 		log.Fatal("Chdir:", err)
 	}
