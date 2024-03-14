@@ -39,6 +39,15 @@ func fillCache(dir string) error {
 			return nil
 		}
 
+		dir2, err := filepath.EvalSymlinks(dir)
+		if err != nil {
+			return err
+		}
+
+		if dir != dir2 {
+			log.Fatalf("Directory is symlink - not supported yet: %s -> %s\n", dir, dir2)
+		}
+
 		// Get the path without the web root directory for logging.
 		trimmedPath := strings.TrimPrefix(path, dir)
 
