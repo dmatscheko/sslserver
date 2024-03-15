@@ -270,10 +270,9 @@ func getCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
 		log.Println("  Got Let's Encrypt certificate for:", name)
 		// Return the certificate if successful.
 		return cert, nil
+	} else {
+		log.Println("  Let's Encrypt:", err)
 	}
-	// else {
-	// log.Println("Error:", err)
-	// }
 
 	// If autocert returned any error, create a self-signed certificate.
 	cert, err = GetSelfSignedCertificate(hello)
