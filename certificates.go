@@ -27,7 +27,7 @@ var certCache map[string]*tls.Certificate = nil
 var certCacheBytes map[string][]byte = nil
 
 // Create a new autocert manager.
-var m = &autocert.Manager{}
+var m *autocert.Manager = nil
 
 //
 // ===========================================
@@ -106,14 +106,15 @@ func (d DirCache) Delete(ctx context.Context, name string) error {
 //
 
 // initCertificates initializes the white list of domains for self signed certificates and also the cache for the self signed certificates.
-func initCertificates() {
-	// Create a new autocert manager.
-	m = &autocert.Manager{
-		Cache:       DirCache(""),
-		Prompt:      autocert.AcceptTOS,
-		HostPolicy:  autocert.HostWhitelist(config.letsEncryptDomains...),
-		RenewBefore: config.CertificateExpiryRefreshThreshold + 24*time.Hour, // This way, RenewBefore is always longer than the certificate expiry timeout when the server terminates.
-	}
+func initCertificates(manager *autocert.Manager) {
+	// // Create a new autocert manager.
+	// m = &autocert.Manager{
+	// 	Cache:       DirCache(""),
+	// 	Prompt:      autocert.AcceptTOS,
+	// 	HostPolicy:  autocert.HostWhitelist(config.letsEncryptDomains...),
+	// 	RenewBefore: config.CertificateExpiryRefreshThreshold + 24*time.Hour, // This way, RenewBefore is always longer than the certificate expiry timeout when the server terminates.
+	// }
+	m = manager
 
 	// Initialize the white list of domains for self signed certificates.
 	allowedDomainsSelfSignedWhiteList = make(map[string]bool, len(config.SelfSignedDomains))
@@ -130,7 +131,7 @@ func initCertificates() {
 	// Initialize certificates before going to jail.
 	for serverName := range config.allDomains {
 
-		cert, err := getCertificate(&tls.ClientHelloInfo{ServerName: serverName})
+		cert, err := MyGetCertificate(&tls.ClientHelloInfo{ServerName: serverName})
 		if err != nil {
 			log.Println("Error when initializing certificate for:", serverName, "\nError:", err)
 			continue
@@ -215,9 +216,9 @@ func GetSelfSignedCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, err
 	return &cert, nil
 }
 
-// getCertificate tries to fetch a certificate from Let's Encrypt and, if that fails,
+// MyGetCertificate tries to fetch a certificate from Let's Encrypt and, if that fails,
 // creates a self-signed certificate.
-func getCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
+func MyGetCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
 	// Return the self signed certificate if it was created before.
 	// Only try to switch back to Let's Encrypt, after the self signed certificate expires.
 

@@ -9,7 +9,9 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"time"
 
+	"golang.org/x/crypto/acme"
 	"golang.org/x/crypto/acme/autocert"
 )
 
@@ -146,34 +148,32 @@ func initParent() {
 		w := bufio.NewWriter(stdin)
 		for {
 			// Receive a Command struct from the parent-to-child channel.
-			command := <-parentToChildCh
+			command, ok := <-parentToChildCh
+			if !ok {
+				log.Fatal("parentToChildCh closed")
+			}
 
 			// log.Println("Command to child:", command)
 
 			// Write the command type to the childs stdin.
-			if _, err := w.WriteString(command.Type); err != nil {
-				log.Fatal(err)
-			}
-			if err := w.WriteByte('\n'); err != nil {
+			if _, err := w.WriteString(command.Type + "\n"); err != nil {
 				log.Fatal(err)
 			}
 
 			// Write the file name for the command to the childs stdin.
-			if _, err := w.WriteString(command.Name); err != nil {
-				log.Fatal(err)
-			}
-			if err := w.WriteByte('\n'); err != nil {
+			if _, err := w.WriteString(command.Name + "\n"); err != nil {
 				log.Fatal(err)
 			}
 
 			// Write the number of bytes of data to the childs stdin.
-			if _, err := w.WriteString(strconv.Itoa(len(command.Data))); err != nil {
+			if _, err := w.WriteString(strconv.Itoa(len(command.Data)) + "\n"); err != nil {
 				log.Fatal(err)
 			}
-			if err := w.WriteByte('\n'); err != nil {
+
+			// Flush the writer to ensure the command is sent.
+			if err := w.Flush(); err != nil {
 				log.Fatal(err)
 			}
-			w.Flush()
 
 			// Write the data to the childs stdin.
 			if _, err := stdin.Write(command.Data); err != nil {
@@ -295,32 +295,29 @@ func initChild() {
 		w := bufio.NewWriter(os.Stdout)
 		for {
 			// Receive a Command struct from the child-to-parent channel.
-			command := <-childToParentCh
+			command, ok := <-childToParentCh
+			if !ok {
+				log.Fatal("childToParentCh closed")
+			}
 
 			// Write the command type to the childs stdout.
-			if _, err := w.WriteString(command.Type); err != nil {
-				log.Fatal(err)
-			}
-			if err := w.WriteByte('\n'); err != nil {
+			if _, err := w.WriteString(command.Type + "\n"); err != nil {
 				log.Fatal(err)
 			}
 
 			// Write the file name for the command to the childs stdout.
-			if _, err := w.WriteString(command.Name); err != nil {
-				log.Fatal(err)
-			}
-			if err := w.WriteByte('\n'); err != nil {
+			if _, err := w.WriteString(command.Name + "\n"); err != nil {
 				log.Fatal(err)
 			}
 
 			// Write the number of bytes of data to the childs stdout.
-			if _, err := w.WriteString(strconv.Itoa(len(command.Data))); err != nil {
+			if _, err := w.WriteString(strconv.Itoa(len(command.Data)) + "\n"); err != nil {
 				log.Fatal(err)
 			}
-			if err := w.WriteByte('\n'); err != nil {
+			// Flush the writer to ensure the command is sent.
+			if err := w.Flush(); err != nil {
 				log.Fatal(err)
 			}
-			w.Flush()
 
 			// Write the data to the childs stdout.
 			if _, err := os.Stdout.Write(command.Data); err != nil {
@@ -329,9 +326,22 @@ func initChild() {
 		}
 	}()
 
+	// Create a new autocert manager.
+	manager := &autocert.Manager{
+		Cache:       DirCache(""),
+		Prompt:      autocert.AcceptTOS,
+		HostPolicy:  autocert.HostWhitelist(config.letsEncryptDomains...),
+		RenewBefore: config.CertificateExpiryRefreshThreshold + 24*time.Hour, // This way, RenewBefore is always longer than the certificate expiry timeout when the server terminates.
+		Email:       "admin-le@14.gy",                                        // TODO
+		// Use staging server
+		Client: &acme.Client{
+			DirectoryURL: "https://acme-staging-v02.api.letsencrypt.org/directory",
+		},
+	}
+
 	// Initialize (fill) the white list and the cert cache.
-	log.Println("Checking certificates...")
-	initCertificates()
+	// log.Println("Checking certificates...")
+	// initCertificates(m)
 
 	// Set permissions for the files and directores in (and including) the web root.
 	log.Println("Setting file permissions for web root")
@@ -347,5 +357,5 @@ func initChild() {
 		log.Fatal(err)
 	}
 
-	runServer()
+	runServer(manager)
 }

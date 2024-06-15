@@ -77,6 +77,44 @@ func initLogging() {
 				}
 			}()
 		}
+
+
+		////// OR something like this:
+
+
+		// Rotate the log files every day.
+		go func() {
+			for range time.Tick(24 * time.Hour) {
+				// Check if the log file size exceeds a threshold before rotating
+				fileInfo, err := f.Stat()
+				if err != nil || fileInfo.Size() >= 5*1024*1024 {
+					rotateLogs()
+				}
+			}
+		}()
+
+		func rotateLogs() {
+			// Remove the oldest log file.
+			os.Remove(config.LogFile + ".3")
+			os.Rename(config.LogFile+".2", config.LogFile+".3")
+			os.Rename(config.LogFile+".1", config.LogFile+".2")
+			os.Rename(config.LogFile, config.LogFile+".1")
+
+			// Create a new log file.
+			f, err := os.Create(config.LogFile)
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			// Create a writer that writes to the log file and to stdout.
+			w := io.MultiWriter(f, os.Stdout)
+
+			// Modify the output of the default logger.
+			log.SetOutput(w)
+		}
+
+
+
 	*/
 
 }

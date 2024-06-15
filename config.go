@@ -1,7 +1,6 @@
 package main
 
 import (
-	"io/ioutil"
 	"log"
 	"net"
 	"os"
@@ -22,10 +21,10 @@ type ServerConfig struct {
 	// Let's Encrypt certificates are stored in this directory.
 	CertificateCacheDirectory string `yaml:"certificate-cache-directory"`
 
-	// The HTTP address to bind the server to.
+	// The HTTP address (host:port or :port) to bind the server to.
 	HttpAddr string `yaml:"http-addr"`
 
-	// The HTTPS address to bind the server to.
+	// The HTTPS address (host:port or :port) to bind the server to.
 	HttpsAddr string `yaml:"https-addr"`
 
 	// Let's Encrypt white list.
@@ -114,7 +113,7 @@ var config = ServerConfig{
 
 func readConfig() {
 	// Read the config file.
-	data, err := ioutil.ReadFile("config.yml")
+	data, err := os.ReadFile("config.yml")
 	if err != nil {
 		// If the file does not exist, create it.
 		log.Println("Configuration file config.yaml does not exist. Creating the file...")
@@ -125,7 +124,7 @@ func readConfig() {
 			return
 		}
 
-		err = ioutil.WriteFile("config.yml", data, 0644)
+		err = os.WriteFile("config.yml", data, 0644)
 		if err != nil {
 			log.Println("Could not write config yaml.")
 			return

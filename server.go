@@ -9,12 +9,23 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+
+	"golang.org/x/crypto/acme"
+	"golang.org/x/crypto/acme/autocert"
 )
 
 var httpServer *http.Server
 var httpsServer *http.Server
 
-func runServer() {
+// Custom HTTP handler to log requests
+func loggingHTTPHandler(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("HTTP Request: %s %s", r.Method, r.URL.Path)
+		next.ServeHTTP(w, r)
+	})
+}
+
+func runServer(manager *autocert.Manager) {
 	// Create a wait group with a count of 2.
 	// This indicates that we are waiting for two signals.
 	// The two signals will be sent when the two servers have finished binding to their addresses.
@@ -45,10 +56,11 @@ func runServer() {
 		ReadTimeout:  config.MaxRequestTimeout,
 		WriteTimeout: config.MaxResponseTimeout,
 		IdleTimeout:  config.MaxIdleTimeout,
-		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Redirect the request to HTTPS.
-			http.Redirect(w, r, "https://"+r.Host+r.URL.Path, http.StatusFound) // TODO: get config.HttpsAddr and redirect to this port. Or better, create a config variable for this, because there can be a proxy in front.
-		}),
+		Handler:      loggingHTTPHandler(manager.HTTPHandler(nil)), // from autocert manager
+		// Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// 	// Redirect the request to HTTPS.
+		// 	http.Redirect(w, r, "https://"+r.Host+r.URL.Path, http.StatusFound) // TODO: get config.HttpsAddr and redirect to this port. Or better, create a config variable for this, because there can be a proxy in front.
+		// }),
 	}
 
 	// Start the HTTP server in a separate goroutine.
@@ -96,7 +108,11 @@ func runServer() {
 		TLSConfig: &tls.Config{
 			// Set the GetCertificate callback for the TLS config to a function
 			// that tries to fetch a certificate.
-			GetCertificate: getCertificate,
+			GetCertificate: MyGetCertificate,
+			NextProtos: []string{
+				"h2", "http/1.1", // enable HTTP/2
+				acme.ALPNProto, // enable tls-alpn ACME challenges
+			},
 		},
 		Handler: http.HandlerFunc(serveFiles), // Serve files from the "static" directory.
 	}
@@ -140,6 +156,10 @@ func runServer() {
 	// BOTH SERVER DID BIND TO THEIR PORT
 	// ========
 	//
+
+	// Initialize (fill) the white list and the cert cache.
+	log.Println("Checking certificates...")
+	initCertificates(manager)
 
 	// Jail process as good as possible
 
