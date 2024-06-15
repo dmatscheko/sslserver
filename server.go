@@ -151,6 +151,17 @@ func startHTTPSServer(wgBindDone, wgJailed, wgServerClosed *sync.WaitGroup) {
 		WriteTimeout: config.MaxResponseTimeout,
 		IdleTimeout:  config.MaxIdleTimeout,
 		TLSConfig: &tls.Config{
+			// Set secure cipher suites and prefer server cipher suites. See: https://ssl-config.mozilla.org/#server=go&version=1.14.4&config=intermediate&guideline=5.7
+			PreferServerCipherSuites: true,
+			MinVersion:               tls.VersionTLS12,
+			CipherSuites: []uint16{
+				tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+				tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+				tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
+				tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+				tls.TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305,
+				tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305,
+			},
 			// Set the GetCertificate callback for the TLS config to a function
 			// that tries to fetch a certificate.
 			GetCertificate: MyGetCertificate,

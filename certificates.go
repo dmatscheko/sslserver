@@ -108,13 +108,6 @@ func (d DirCache) Delete(ctx context.Context, name string) error {
 
 // initCertificates initializes the white list of domains for self signed certificates and also the cache for the self signed certificates.
 func initCertificates(manager *autocert.Manager) {
-	// // Create a new autocert manager.
-	// m = &autocert.Manager{
-	// 	Cache:       DirCache(""),
-	// 	Prompt:      autocert.AcceptTOS,
-	// 	HostPolicy:  autocert.HostWhitelist(config.letsEncryptDomains...),
-	// 	RenewBefore: config.CertificateExpiryRefreshThreshold + 24*time.Hour, // This way, RenewBefore is always longer than the certificate expiry timeout when the server terminates.
-	// }
 	m = manager
 
 	// Initialize the white list of domains for self signed certificates.
