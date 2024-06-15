@@ -125,23 +125,23 @@ func initCertificates(manager *autocert.Manager) {
 	// Initialize certificates before going to jail.
 	for serverName := range config.allDomains {
 
-		cert, err := MyGetCertificate(&tls.ClientHelloInfo{ServerName: serverName})
+		_, err := MyGetCertificate(&tls.ClientHelloInfo{ServerName: serverName})
 		if err != nil {
 			log.Println("Error when initializing certificate for:", serverName, "\nError:", err)
 			continue
 		}
 
-		// Parse the certificate from a PEM-encoded byte slice.
-		if cert.Leaf == nil {
-			parsedCert, err := x509.ParseCertificate(cert.Certificate[0])
-			if err != nil {
-				log.Fatal(err)
-			}
-			cert.Leaf = parsedCert
-		}
+		// // Parse the certificate from a PEM-encoded byte slice.
+		// if cert.Leaf == nil {
+		// 	parsedCert, err := x509.ParseCertificate(cert.Certificate[0])
+		// 	if err != nil {
+		// 		log.Fatal(err)
+		// 	}
+		// 	cert.Leaf = parsedCert
+		// }
 
-		// Set the cache.
-		certCache[serverName] = cert
+		// // Set the cache.
+		// certCache[serverName] = cert
 	}
 }
 
@@ -265,7 +265,9 @@ func MyGetCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
 	cert, err := m.GetCertificate(hello)
 	if err == nil {
 		log.Println("  certificate: got Let's Encrypt certificate for:", name)
-		// Return the certificate if successful.
+		// Cache the certificate
+		certCache[name] = cert
+		// Return the certificate if successful
 		return cert, nil
 	} else {
 		log.Printf("  certificate: Let's Encrypt error for %s: %v\n", name, err)
@@ -275,6 +277,7 @@ func MyGetCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
 	cert, err = GetSelfSignedCertificate(hello)
 	if err == nil {
 		log.Printf("  certificate: created self signed certificate for: %s", name)
+		// Cache the certificate
 		certCache[name] = cert
 		return cert, nil
 	}
