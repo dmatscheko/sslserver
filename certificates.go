@@ -217,7 +217,7 @@ func MyGetCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
 	// Return the self signed certificate if it was created before.
 	// Only try to switch back to Let's Encrypt, after the self signed certificate expires.
 
-	// Get domain name.
+	// Get and validate the domain name.
 	name := hello.ServerName
 	if name == "" {
 		return nil, errors.New("certificate: cannot get certificate because of missing server name")
@@ -238,48 +238,44 @@ func MyGetCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
 	}
 
 	// Check the cache for an existing certificate.
-	if certCache[name] != nil {
+	cachedCert := certCache[name]
+	if cachedCert != nil {
 		// Parse the certificate from a PEM-encoded byte slice if not already parsed.
-		if certCache[name].Leaf == nil {
-			parsedCert, err := x509.ParseCertificate(certCache[name].Certificate[0])
+		if cachedCert.Leaf == nil {
+			parsedCert, err := x509.ParseCertificate(cachedCert.Certificate[0])
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("certificate: error parsing cached certificate: %v", err)
 			}
-			certCache[name].Leaf = parsedCert
+			cachedCert.Leaf = parsedCert
 		}
 
 		// Check certificate expiration.
-		expiration := certCache[name].Leaf.NotAfter
-		duration := time.Until(expiration)
-		if duration < config.CertificateExpiryRefreshThreshold {
-			// Clear certCache[name] from the expired certificate.
-			certCache[name] = nil
-			log.Printf("certificate: cert for %s expires within %s. Expiration date: %s\n", name, config.CertificateExpiryRefreshThreshold, expiration)
-		} else {
-			// Certificate is valid.
-			return certCache[name], nil
+		if time.Until(cachedCert.Leaf.NotAfter) >= config.CertificateExpiryRefreshThreshold {
+			// Certificate is still valid.
+			return cachedCert, nil
 		}
+
+		// Clear expired certificate from cache.
+		certCache[name] = nil
+		log.Printf("certificate: cert for %s expired or about to expire, fetching new certificate", name)
 	}
 
-	// Try to fetch a certificate from Let's Encrypt.
+	// Fetch a new certificate from Let's Encrypt.
 	cert, err := m.GetCertificate(hello)
 	if err == nil {
-		log.Println("  certificate: got Let's Encrypt certificate for:", name)
-		// Cache the certificate
+		log.Printf("certificate: got Let's Encrypt certificate for: %s", name)
 		certCache[name] = cert
-		// Return the certificate if successful
 		return cert, nil
-	} else {
-		log.Printf("  certificate: Let's Encrypt error for %s: %v\n", name, err)
+	}
+	log.Printf("certificate: Let's Encrypt error for %s: %v, creating self-signed certificate", name, err)
+
+	// Create a self-signed certificate if fetching from Let's Encrypt failed.
+	cert, err = GetSelfSignedCertificate(hello)
+	if err != nil {
+		return nil, fmt.Errorf("certificate: failed to create self-signed certificate: %v", err)
 	}
 
-	// If autocert returned any error, create a self-signed certificate.
-	cert, err = GetSelfSignedCertificate(hello)
-	if err == nil {
-		log.Printf("  certificate: created self signed certificate for: %s", name)
-		// Cache the certificate
-		certCache[name] = cert
-		return cert, nil
-	}
-	return nil, err
+	log.Printf("certificate: created self-signed certificate for: %s", name)
+	certCache[name] = cert
+	return cert, nil
 }
