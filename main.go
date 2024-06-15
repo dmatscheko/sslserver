@@ -1,5 +1,7 @@
 package main
 
+// TODO: push new certificates through the clinet-server communication and enable the jail again
+
 import (
 	"bufio"
 	"context"
@@ -11,7 +13,6 @@ import (
 	"strings"
 	"time"
 
-	"golang.org/x/crypto/acme"
 	"golang.org/x/crypto/acme/autocert"
 )
 
@@ -344,9 +345,9 @@ func initChild() {
 		RenewBefore: config.CertificateExpiryRefreshThreshold + 24*time.Hour, // This way, RenewBefore is always longer than the certificate expiry timeout when the server terminates.
 		Email:       "admin-le@14.gy",                                        // TODO
 		// Use staging server
-		Client: &acme.Client{
-			DirectoryURL: "https://acme-staging-v02.api.letsencrypt.org/directory",
-		},
+		// Client: &acme.Client{
+		// 	DirectoryURL: "https://acme-staging-v02.api.letsencrypt.org/directory",
+		// },
 	}
 
 	// Initialize (fill) the white list and the cert cache.

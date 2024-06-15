@@ -127,7 +127,7 @@ func initCertificates(manager *autocert.Manager) {
 
 		_, err := MyGetCertificate(&tls.ClientHelloInfo{ServerName: serverName})
 		if err != nil {
-			log.Println("Error when initializing certificate for:", serverName, "\nError:", err)
+			log.Println("Error when initializing certificate for:", serverName, "Error:", err)
 			continue
 		}
 
@@ -254,7 +254,7 @@ func MyGetCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
 		if duration < config.CertificateExpiryRefreshThreshold {
 			// Clear certCache[name] from the expired certificate.
 			certCache[name] = nil
-			log.Printf("certificate: cert for %s expires within %s\n", name, config.CertificateExpiryRefreshThreshold)
+			log.Printf("certificate: cert for %s expires within %s. Expiration date: %s\n", name, config.CertificateExpiryRefreshThreshold, expiration)
 		} else {
 			// Certificate is valid.
 			return certCache[name], nil

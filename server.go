@@ -6,7 +6,6 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"path/filepath"
 	"sync"
 	"time"
 
@@ -65,23 +64,29 @@ func runServer(manager *autocert.Manager) {
 	// ========
 	//
 
-	// Initialize (fill) the white list and the cert cache.
-	log.Println("Checking certificates...")
-	initCertificates(manager)
-
 	// Jail process as good as possible
 
 	// Convert the relative path to an absolute path.
-	absoluteBaseDirectory, err := filepath.Abs(config.WebRootDirectory)
-	if err != nil {
-		log.Fatalln("Could not get absolute path for web root:", err)
-	}
+	// absoluteBaseDirectory, err := filepath.Abs(config.WebRootDirectory)
+	// if err != nil {
+	// 	log.Fatalln("Could not get absolute path for web root:", err)
+	// }
 
 	// Remove write permissions, drop privileges and jail process if running on Linux. Only remove write permissions on windows.
-	Jail(absoluteBaseDirectory)
+	// Jail(absoluteBaseDirectory)
 
 	// Send a signal on the wait group when the server has been jailed.
 	wgJailed.Done()
+
+	//
+	// ========
+	// THE SERVER IS INSIDE THE JAIL
+	// ========
+	//
+
+	// Initialize (fill) the white list and the cert cache.
+	log.Println("Checking certificates...")
+	initCertificates(manager)
 
 	// Close both server.	// TODO: do this on signal terminate.
 	// terminateServer(httpServer, httpsServer)
