@@ -228,18 +228,10 @@ func addHeaders(w http.ResponseWriter) {
 		w.Header().Set("X-Frame-Options", config.HttpHeaderXFrameOptions)
 	}
 
-	/*
-		// The contenttype is added by ServeContent()
-		w.Header().Set("Content-Type", contenttype)
-		// Cache header are added by ServeContent()
-		if cache {
-			w.Header().Set("Cache-Control", "max-age=300")
-		} else {
-			w.Header().Set("Cache-control", "no-store")
-			w.Header().Set("Pragma", "no-cache")
-			w.Header().Set("Expires", "0")
-		}
-	*/
+	// TODO: make this configurable
+	w.Header().Set("X-XSS-Protection", "1; mode=block")
+	w.Header().Set("Referrer-Policy", "no-referrer")
+	w.Header().Set("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
 }
 
 func setPermissions(dir string) error {

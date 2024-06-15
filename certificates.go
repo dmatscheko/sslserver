@@ -149,7 +149,7 @@ func initCertificates(manager *autocert.Manager) {
 func GetSelfSignedCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
 	name := hello.ServerName
 	if name == "" {
-		return nil, errors.New("Self signed cert: missing server name")
+		return nil, errors.New("self signed certificate: missing server name")
 	}
 
 	// Note that this conversion is necessary because some server names in the handshakes
@@ -160,20 +160,21 @@ func GetSelfSignedCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, err
 	//
 	// Due to the "σςΣ" problem (see https://unicode.org/faq/idn.html#22), we can't use
 	// idna.Punycode.ToASCII (or just idna.ToASCII) here.
-	name, err := idna.Lookup.ToASCII(name)
+	ascii_name, err := idna.Lookup.ToASCII(name)
 	if err != nil {
-		return nil, errors.New("Self signed cert: server name contains invalid character")
+		return nil, fmt.Errorf("self signed certificate: server name contains invalid character: %s", name)
 	}
+	name = ascii_name
 
 	// Check if the domain name is in the white list.
 	if !allowedDomainsSelfSignedWhiteList[name] {
-		return nil, errors.New("Self signed cert: server name not in white list: " + name)
+		return nil, errors.New("self signed certificate: server name not in white list: " + name)
 	}
 
 	// Generate a new private key.
 	privateKey, err := rsa.GenerateKey(rand.Reader, 4096)
 	if err != nil {
-		return nil, fmt.Errorf("failed to generate private key: %v", err)
+		return nil, fmt.Errorf("self signed certificate: failed to generate private key for %s: %v", name, err)
 	}
 
 	// Create a template for the certificate.
@@ -194,7 +195,7 @@ func GetSelfSignedCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, err
 	publicKey := &privateKey.PublicKey
 	certificate, err := x509.CreateCertificate(rand.Reader, &template, &template, publicKey, privateKey)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create certificate: %v", err)
+		return nil, fmt.Errorf("self signed certificate: failed to create certificate for %s: %v", name, err)
 	}
 
 	// Encode the private key and certificate in PEM format.
@@ -204,7 +205,7 @@ func GetSelfSignedCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, err
 	// Create a TLS certificate using the PEM-encoded bytes.
 	cert, err := tls.X509KeyPair(certificatePEM, privateKeyPEM)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create X509 key pair: %v", err)
+		return nil, fmt.Errorf("self signed certificate: failed to create X509 key pair: %v", err)
 	}
 
 	return &cert, nil
@@ -219,8 +220,10 @@ func MyGetCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
 	// Get domain name.
 	name := hello.ServerName
 	if name == "" {
-		return nil, errors.New("Self signed cert: missing server name")
+		return nil, errors.New("certificate: cannot get certificate because of missing server name")
 	}
+
+	// Convert the domain name to ASCII.
 	// Note that this conversion is necessary because some server names in the handshakes
 	// started by some clients (such as cURL) are not converted to Punycode, which will
 	// prevent us from obtaining certificates for them. In addition, we should also treat
@@ -231,11 +234,12 @@ func MyGetCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
 	// idna.Punycode.ToASCII (or just idna.ToASCII) here.
 	name, err := idna.Lookup.ToASCII(name)
 	if err != nil {
-		return nil, errors.New("Self signed cert: server name contains invalid character")
+		return nil, fmt.Errorf("certificate: server name contains invalid character: %s", name)
 	}
 
+	// Check the cache for an existing certificate.
 	if certCache[name] != nil {
-		// Parse the certificate from a PEM-encoded byte slice.
+		// Parse the certificate from a PEM-encoded byte slice if not already parsed.
 		if certCache[name].Leaf == nil {
 			parsedCert, err := x509.ParseCertificate(certCache[name].Certificate[0])
 			if err != nil {
@@ -244,17 +248,15 @@ func MyGetCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
 			certCache[name].Leaf = parsedCert
 		}
 
-		// Get the expiration time of the SSL certificate.
+		// Check certificate expiration.
 		expiration := certCache[name].Leaf.NotAfter
-		// Convert it into the duration from now.
 		duration := time.Until(expiration)
-		// Check if expired with durationBeforeCertificateExpiryRefresh time buffer.
 		if duration < config.CertificateExpiryRefreshThreshold {
-			// Clear certCache[name] from the expired certificate, so that it can be checked faster.
+			// Clear certCache[name] from the expired certificate.
 			certCache[name] = nil
-			log.Printf("Self signed certificate expires within a duration of %s.\n", config.CertificateExpiryRefreshThreshold)
+			log.Printf("certificate: cert for %s expires within %s\n", name, config.CertificateExpiryRefreshThreshold)
 		} else {
-			// Certificate is valid with durationBeforeCertificateExpiryRefresh time buffer.
+			// Certificate is valid.
 			return certCache[name], nil
 		}
 	}
@@ -262,17 +264,17 @@ func MyGetCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
 	// Try to fetch a certificate from Let's Encrypt.
 	cert, err := m.GetCertificate(hello)
 	if err == nil {
-		log.Println("  Got Let's Encrypt certificate for:", name)
+		log.Println("  certificate: got Let's Encrypt certificate for:", name)
 		// Return the certificate if successful.
 		return cert, nil
 	} else {
-		log.Println("  Let's Encrypt:", err)
+		log.Printf("  certificate: Let's Encrypt error for %s: %v\n", name, err)
 	}
 
 	// If autocert returned any error, create a self-signed certificate.
 	cert, err = GetSelfSignedCertificate(hello)
 	if err == nil {
-		log.Println("  Created self signed certificate for:", name)
+		log.Printf("  certificate: created self signed certificate for: %s", name)
 		certCache[name] = cert
 		return cert, nil
 	}
