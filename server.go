@@ -46,109 +46,17 @@ func runServer(manager *autocert.Manager) {
 
 	//
 	// ========
-	// HTTP SERVER
+	// START BOTH SERVER in separate goroutines
 	// ========
 	//
 
-	// Create an HTTP server that redirects all requests to HTTPS.
-	httpServer = &http.Server{
-		Addr:         config.HttpAddr,
-		ReadTimeout:  config.MaxRequestTimeout,
-		WriteTimeout: config.MaxResponseTimeout,
-		IdleTimeout:  config.MaxIdleTimeout,
-		Handler:      loggingHTTPHandler(manager.HTTPHandler(nil)), // from autocert manager
-		// Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// 	// Redirect the request to HTTPS.
-		// 	http.Redirect(w, r, "https://"+r.Host+r.URL.Path, http.StatusFound) // TODO: get config.HttpsAddr and redirect to this port. Or better, create a config variable for this, because there can be a proxy in front.
-		// }),
-	}
+	// Start the HTTP server.
+	go startHTTPServer(manager, &wgBindDone, &wgJailed, &wgServerClosed)
 
-	// Start the HTTP server in a separate goroutine.
-	go func() {
-		log.Println("Starting HTTP server on", httpServer.Addr)
+	// Start the HTTPS server.
+	go startHTTPSServer(&wgBindDone, &wgJailed, &wgServerClosed)
 
-		// Listen on the specified address.
-		ln, err := net.Listen("tcp", httpServer.Addr)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		// Close the listener when the function returns.
-		defer ln.Close()
-
-		// Send a signal on the wait group when the listener is ready.
-		wgBindDone.Done()
-
-		// Wait for the wait group to reach zero.
-		// This will happen when the server has been jailed.
-		wgJailed.Wait()
-
-		// Serve HTTP connections on the listener.
-		err = httpServer.Serve(ln)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		// Send a signal on the wait group when the server has closed.
-		wgServerClosed.Done()
-	}()
-
-	//
-	// ========
-	// HTTPS SERVER
-	// ========
-	//
-
-	// Create an HTTPS server that serves files from the "static" directory.
-	httpsServer = &http.Server{
-		Addr:         config.HttpsAddr,
-		ReadTimeout:  config.MaxRequestTimeout,
-		WriteTimeout: config.MaxResponseTimeout,
-		IdleTimeout:  config.MaxIdleTimeout,
-		TLSConfig: &tls.Config{
-			// Set the GetCertificate callback for the TLS config to a function
-			// that tries to fetch a certificate.
-			GetCertificate: MyGetCertificate,
-			NextProtos: []string{
-				"h2", "http/1.1", // enable HTTP/2
-				acme.ALPNProto, // enable tls-alpn ACME challenges
-			},
-		},
-		Handler: http.HandlerFunc(serveFiles), // Serve files from the "static" directory.
-	}
-
-	// Start the HTTPS server in a separate goroutine.
-	go func() {
-		log.Println("Starting HTTPS server on", httpsServer.Addr)
-
-		// Listen on the specified address.
-		ln, err := net.Listen("tcp", httpsServer.Addr)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		// Close the listener when the function returns.
-		defer ln.Close()
-
-		// Send a signal on the wait group when the listener is ready.
-		wgBindDone.Done()
-
-		// Wait for the wait group to reach zero.
-		// This will happen when the server has been jailed.
-		wgJailed.Wait()
-
-		// Serve TLS connections on the listener.
-		err = httpsServer.ServeTLS(ln, "", "")
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		// Send a signal on the wait group when the server has closed.
-		wgServerClosed.Done()
-	}()
-
-	// Wait for the wait group to reach zero.
-	// This will happen when both the HTTP and the HTTPS server terminate.
+	// Wait for both servers to bind to their ports (wait for the wait group to reach zero).
 	wgBindDone.Wait()
 
 	//
@@ -193,6 +101,95 @@ func runServer(manager *autocert.Manager) {
 	log.Println("Server terminated.")
 }
 
+// Create an HTTP server that redirects all requests to HTTPS.
+func startHTTPServer(manager *autocert.Manager, wgBindDone, wgJailed, wgServerClosed *sync.WaitGroup) {
+	httpServer = &http.Server{
+		Addr:         config.HttpAddr,
+		ReadTimeout:  config.MaxRequestTimeout,
+		WriteTimeout: config.MaxResponseTimeout,
+		IdleTimeout:  config.MaxIdleTimeout,
+		Handler:      loggingHTTPHandler(manager.HTTPHandler(nil)), // from autocert manager
+		// Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// 	// Redirect the request to HTTPS.
+		// 	http.Redirect(w, r, "https://"+r.Host+r.URL.Path, http.StatusFound) // TODO: get config.HttpsAddr and redirect to this port. Or better, create a config variable for this, because there can be a proxy in front.
+		// }),
+	}
+
+	log.Println("Starting HTTP server on", httpServer.Addr)
+
+	// Listen on the specified address.
+	ln, err := net.Listen("tcp", httpServer.Addr)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// Close the listener when the function returns.
+	defer ln.Close()
+
+	// Send a signal on the wait group when the listener is ready.
+	wgBindDone.Done()
+
+	// Wait for the wait group to reach zero.
+	// This will happen when the server has been jailed.
+	wgJailed.Wait()
+
+	// Serve HTTP connections on the listener.
+	err = httpServer.Serve(ln)
+	if err != nil && err != http.ErrServerClosed {
+		log.Fatal(err)
+	}
+
+	// Send a signal on the wait group when the server has closed.
+	wgServerClosed.Done()
+}
+
+// Create an HTTPS server that serves files from the "static" directory.
+func startHTTPSServer(wgBindDone, wgJailed, wgServerClosed *sync.WaitGroup) {
+	httpsServer = &http.Server{
+		Addr:         config.HttpsAddr,
+		ReadTimeout:  config.MaxRequestTimeout,
+		WriteTimeout: config.MaxResponseTimeout,
+		IdleTimeout:  config.MaxIdleTimeout,
+		TLSConfig: &tls.Config{
+			// Set the GetCertificate callback for the TLS config to a function
+			// that tries to fetch a certificate.
+			GetCertificate: MyGetCertificate,
+			NextProtos: []string{
+				"h2", "http/1.1", // enable HTTP/2 and HTTP/1.1
+				acme.ALPNProto, // enable tls-alpn ACME challenges
+			},
+		},
+		Handler: http.HandlerFunc(serveFiles), // Serve files from the "static" directory.
+	}
+
+	log.Println("Starting HTTPS server on", httpsServer.Addr)
+
+	// Listen on the specified address.
+	ln, err := net.Listen("tcp", httpsServer.Addr)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// Close the listener when the function returns.
+	defer ln.Close()
+
+	// Send a signal on the wait group when the listener is ready.
+	wgBindDone.Done()
+
+	// Wait for the wait group to reach zero.
+	// This will happen when the server has been jailed.
+	wgJailed.Wait()
+
+	// Serve TLS connections on the listener.
+	err = httpsServer.ServeTLS(ln, "", "")
+	if err != nil && err != http.ErrServerClosed {
+		log.Fatal(err)
+	}
+
+	// Send a signal on the wait group when the server has closed.
+	wgServerClosed.Done()
+}
+
 // terminateServer shuts down the given servers with a timeout of 10 seconds.
 //
 // This function calls the http.Server.Shutdown() method for each server and passes in
@@ -210,6 +207,7 @@ func terminateServerList(servers ...*http.Server) {
 	// Shut down the servers in parallel go routines.
 	for _, server := range servers {
 		go func(server *http.Server) {
+			defer wgShutdown.Done() // Send a signal on the wait group when the server has shut down.
 			// Shut down the server using the context.
 			// This will cause the server to stop accepting new connections.
 			// and wait for all existing connections to be closed.
@@ -217,9 +215,6 @@ func terminateServerList(servers ...*http.Server) {
 			if err != nil {
 				log.Fatal("Server shutdown:", err)
 			}
-
-			// Send a signal on the wait group when the server has shut down.
-			wgShutdown.Done()
 		}(server)
 	}
 

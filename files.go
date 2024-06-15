@@ -2,8 +2,9 @@ package main
 
 import (
 	"bytes"
-	"io/fs"
-	"io/ioutil"
+	"errors"
+	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -20,8 +21,9 @@ import (
 // server. The map keys are the file paths, and the values are the contents of
 // the files.
 type CacheEntry struct {
-	File    []byte
-	ModTime time.Time
+	FileContent []byte    // Content of file that is kept in memory
+	FilePointer *os.File  // Pointer to file that is too large and needs to be read from disk
+	ModTime     time.Time // Modification time of the file
 }
 
 var fileCache = make(map[string]CacheEntry)
@@ -32,11 +34,7 @@ var fileCache = make(map[string]CacheEntry)
 func fillCache(dir string) error {
 	dir = filepath.Clean(dir)
 	return filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-
-		if info.IsDir() {
+		if err != nil || info.IsDir() {
 			return nil
 		}
 
@@ -61,13 +59,13 @@ func fillCache(dir string) error {
 			return nil
 		}
 
-		data, err := ioutil.ReadFile(path)
+		data, err := os.ReadFile(path)
 		if err != nil {
 			return err
 		}
 
 		log.Println(" ", trimmedPath)
-		fileCache[trimmedPath] = CacheEntry{File: data, ModTime: info.ModTime()}
+		fileCache[trimmedPath] = CacheEntry{FileContent: data, ModTime: info.ModTime()}
 		return nil
 	})
 }
@@ -82,33 +80,66 @@ func serveFiles(w http.ResponseWriter, r *http.Request) {
 	// Extract URL path and domain from the request
 	urlPath := r.URL.Path
 	domain := r.Host
-
 	// Get the IP address of the client.
 	clientIP := r.RemoteAddr
+
 	if config.LogRequests {
 		log.Println("Request:", clientIP, "", urlPath)
 	}
 
-	// Set default domain if none provided
-	if domain == "" {
-		domain = "nodomain"
-	}
-
-	// Check if the domain is allowed
-	domain, err := idna.Lookup.ToASCII(domain)
+	domain, err := validateDomain(domain)
 	if err != nil {
 		http.NotFound(w, r)
 		return
 	}
-	if !config.allDomains[domain] {
+
+	urlPath, err = validateAndCleanPath(urlPath)
+	if err != nil {
 		http.NotFound(w, r)
 		return
 	}
 
-	// Clean the URL path for security
-	if urlPath != path.Clean(urlPath) {
+	// Prepend domain and webroot to the URL path to get the file path
+	filePath := filepath.FromSlash(domain + urlPath)
+
+	entry, err := getFileEntry(filePath, domain+urlPath)
+	if err != nil {
 		http.NotFound(w, r)
 		return
+	}
+
+	// Write the file contents to the HTTP response.
+	addHeaders(w)
+	if entry.FilePointer != nil {
+		http.ServeContent(w, r, urlPath, entry.ModTime, entry.FilePointer)
+		entry.FilePointer.Close()
+	} else {
+		http.ServeContent(w, r, urlPath, entry.ModTime, bytes.NewReader(entry.FileContent))
+	}
+}
+
+func validateDomain(domain string) (string, error) {
+	// Set default domain if none provided
+	if domain == "" {
+		return "nodomain", nil
+	}
+
+	// Check if the domain is allowed
+	asciiDomain, err := idna.Lookup.ToASCII(domain)
+	if err != nil {
+		return "", fmt.Errorf("invalid domain: %v", err)
+	}
+	if !config.allDomains[asciiDomain] {
+		return "", errors.New("domain not allowed")
+	}
+
+	return asciiDomain, nil
+}
+
+func validateAndCleanPath(urlPath string) (string, error) {
+	// Clean the URL path for security
+	if urlPath != path.Clean(urlPath) {
+		return "", errors.New("invalid URL path")
 	}
 
 	// Set default file to index.html if URL path is root
@@ -118,85 +149,63 @@ func serveFiles(w http.ResponseWriter, r *http.Request) {
 
 	// Check if the URL path matches the expected file pattern
 	if !matchPath(urlPath) {
-		http.NotFound(w, r)
-		return
+		return "", errors.New("invalid URL path pattern")
 	}
 
-	// Prepend domain and webroot to the URL path to get the file path
-	filePath := filepath.FromSlash(domain + urlPath)
+	return urlPath, nil
+}
 
-	// Check if the file has already been read and cached.
+func getFileEntry(filePath, domainAndUrlPath string) (CacheEntry, error) {
+	// Check if the file has already been read and cached
 	entry, isCached := fileCache[filePath]
 
-	// Try to open the file on the disk and read the file info.
+	// Try to open the file if serving files not in cache
 	if config.ServeFilesNotInCache {
-		cacheAgain := false
-		var info fs.FileInfo
-
 		file, err := os.Open(filePath)
 		if err != nil {
-			// If the file is cached, it does not matter that it can't be opened.
-			if !isCached {
-				log.Println("File not found:", domain+urlPath)
-				http.NotFound(w, r)
-				return
+			if isCached { // If the file is cached, it doesn't matter that it can't be opened (is the case if the webroot is outside the jail)
+				log.Printf("Returning cached entry, cannot open file: %s", domainAndUrlPath)
+				return entry, nil
 			}
-		} else {
-			defer file.Close()
+			return CacheEntry{}, fmt.Errorf("can't open file and not cached: %s", domainAndUrlPath)
+		}
+		// defer file.Close() // Don't always close the file descriptor in this func. It will sometimes be closed in serveFiles()
 
-			// Get the file info.
-			info, err = file.Stat()
-			if err != nil {
-				// If the file is cached, it does not matter that the stats can't be read.
-				if !isCached {
-					log.Println("File not found:", domain+urlPath)
-					http.NotFound(w, r)
-					return
-				}
-			} else {
-				if info.ModTime().After(entry.ModTime) {
-					cacheAgain = true
-				}
+		info, err := file.Stat()
+		if err != nil {
+			// We don't return the file descriptor so we can close it
+			file.Close()
+			if isCached { // If the file is cached, it doesn't matter that the file info can't be read (is the case if the webroot is outside the jail)
+				log.Printf("Returning cached entry, cannot read file info: %s", domainAndUrlPath)
+				return entry, nil
 			}
+			return CacheEntry{}, fmt.Errorf("can't read file info and not cached: %s", domainAndUrlPath)
 		}
 
-		// If the file is not already cached, or there is a newer one on the disk, read it.
-		if !isCached || cacheAgain {
-			if info == nil { // Info is nil, when the file could not be opened correctly.
-				log.Println("File not found:", domain+urlPath)
-				http.NotFound(w, r)
-				return
+		// Update cache if file modification time differs
+		if !isCached || !info.ModTime().Equal(entry.ModTime) {
+			if info.Size() > config.MaxCacheableFileSize {
+				// Return large file as file descriptor (that needs to be closed)
+				return CacheEntry{FilePointer: file, ModTime: info.ModTime()}, nil
 			}
 
-			// Get the file size in bytes.
-			size := info.Size()
-			if size > config.MaxCacheableFileSize {
-				// Serving large file contents to the HTTP response.
-				addHeaders(w)
-				http.ServeContent(w, r, urlPath, info.ModTime(), file)
-				return
-			}
+			// We don't return the file descriptor so we can close it
+			defer file.Close()
 
-			data, err := ioutil.ReadAll(file)
+			data, err := io.ReadAll(file)
 			if err != nil {
-				log.Println("Could not read file:", domain+urlPath)
-				http.NotFound(w, r)
+				return CacheEntry{}, fmt.Errorf("can't read file content: %s", domainAndUrlPath)
 			}
 
-			// Cache the file contents in memory.
-			log.Println("Updating new file into cache:", domain+urlPath)
-			entry = CacheEntry{File: data, ModTime: info.ModTime()}
+			log.Println("Updating cache with new file:", domainAndUrlPath)
+			entry = CacheEntry{FileContent: data, ModTime: info.ModTime()}
 			fileCache[filePath] = entry
 		}
 	} else if !isCached {
-		log.Println("File not found:", domain+urlPath)
-		http.NotFound(w, r)
-		return
+		return CacheEntry{}, fmt.Errorf("file not cached and reading from disk is disabled: %s", domainAndUrlPath)
 	}
 
-	// Write the file contents to the HTTP response.
-	addHeaders(w)
-	http.ServeContent(w, r, urlPath, entry.ModTime, bytes.NewReader(entry.File))
+	return entry, nil
 }
 
 // addHeaders adds basic HTTP headers to the response.

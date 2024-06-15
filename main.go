@@ -147,37 +147,42 @@ func initParent() {
 	go func() {
 		w := bufio.NewWriter(stdin)
 		for {
+			select {
 			// Receive a Command struct from the parent-to-child channel.
-			command, ok := <-parentToChildCh
-			if !ok {
-				log.Fatal("parentToChildCh closed")
-			}
+			case command, ok := <-parentToChildCh:
+				if !ok {
+					log.Fatal("parentToChildCh closed")
+				}
 
-			// log.Println("Command to child:", command)
+				// log.Println("Command to child:", command)
 
-			// Write the command type to the childs stdin.
-			if _, err := w.WriteString(command.Type + "\n"); err != nil {
-				log.Fatal(err)
-			}
+				// Write the command type to the childs stdin.
+				if _, err := w.WriteString(command.Type + "\n"); err != nil {
+					log.Fatal(err)
+				}
 
-			// Write the file name for the command to the childs stdin.
-			if _, err := w.WriteString(command.Name + "\n"); err != nil {
-				log.Fatal(err)
-			}
+				// Write the file name for the command to the childs stdin.
+				if _, err := w.WriteString(command.Name + "\n"); err != nil {
+					log.Fatal(err)
+				}
 
-			// Write the number of bytes of data to the childs stdin.
-			if _, err := w.WriteString(strconv.Itoa(len(command.Data)) + "\n"); err != nil {
-				log.Fatal(err)
-			}
+				// Write the number of bytes of data to the childs stdin.
+				if _, err := w.WriteString(strconv.Itoa(len(command.Data)) + "\n"); err != nil {
+					log.Fatal(err)
+				}
 
-			// Flush the writer to ensure the command is sent.
-			if err := w.Flush(); err != nil {
-				log.Fatal(err)
-			}
+				// Flush the writer to ensure the command is sent.
+				if err := w.Flush(); err != nil {
+					log.Fatal(err)
+				}
 
-			// Write the data to the childs stdin.
-			if _, err := stdin.Write(command.Data); err != nil {
-				log.Fatal(err)
+				// Write the data to the childs stdin.
+				if _, err := stdin.Write(command.Data); err != nil {
+					log.Fatal(err)
+				}
+
+			case <-time.After(10 * time.Second):
+				log.Println("Timeout waiting for command to child")
 			}
 		}
 	}()
@@ -294,34 +299,39 @@ func initChild() {
 	go func() {
 		w := bufio.NewWriter(os.Stdout)
 		for {
+			select {
 			// Receive a Command struct from the child-to-parent channel.
-			command, ok := <-childToParentCh
-			if !ok {
-				log.Fatal("childToParentCh closed")
-			}
+			case command, ok := <-childToParentCh:
+				if !ok {
+					log.Fatal("childToParentCh closed")
+				}
 
-			// Write the command type to the childs stdout.
-			if _, err := w.WriteString(command.Type + "\n"); err != nil {
-				log.Fatal(err)
-			}
+				// Write the command type to the childs stdout.
+				if _, err := w.WriteString(command.Type + "\n"); err != nil {
+					log.Fatal(err)
+				}
 
-			// Write the file name for the command to the childs stdout.
-			if _, err := w.WriteString(command.Name + "\n"); err != nil {
-				log.Fatal(err)
-			}
+				// Write the file name for the command to the childs stdout.
+				if _, err := w.WriteString(command.Name + "\n"); err != nil {
+					log.Fatal(err)
+				}
 
-			// Write the number of bytes of data to the childs stdout.
-			if _, err := w.WriteString(strconv.Itoa(len(command.Data)) + "\n"); err != nil {
-				log.Fatal(err)
-			}
-			// Flush the writer to ensure the command is sent.
-			if err := w.Flush(); err != nil {
-				log.Fatal(err)
-			}
+				// Write the number of bytes of data to the childs stdout.
+				if _, err := w.WriteString(strconv.Itoa(len(command.Data)) + "\n"); err != nil {
+					log.Fatal(err)
+				}
+				// Flush the writer to ensure the command is sent.
+				if err := w.Flush(); err != nil {
+					log.Fatal(err)
+				}
 
-			// Write the data to the childs stdout.
-			if _, err := os.Stdout.Write(command.Data); err != nil {
-				log.Fatal(err)
+				// Write the data to the childs stdout.
+				if _, err := os.Stdout.Write(command.Data); err != nil {
+					log.Fatal(err)
+				}
+
+			case <-time.After(10 * time.Second):
+				log.Println("Timeout waiting for command to parent")
 			}
 		}
 	}()

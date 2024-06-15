@@ -9,6 +9,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"errors"
+	"fmt"
 	"log"
 	"math/big"
 	"time"
@@ -177,9 +178,9 @@ func GetSelfSignedCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, err
 	}
 
 	// Generate a new private key.
-	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	privateKey, err := rsa.GenerateKey(rand.Reader, 4096)
 	if err != nil {
-		return &tls.Certificate{}, err
+		return nil, fmt.Errorf("failed to generate private key: %v", err)
 	}
 
 	// Create a template for the certificate.
@@ -200,7 +201,7 @@ func GetSelfSignedCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, err
 	publicKey := &privateKey.PublicKey
 	certificate, err := x509.CreateCertificate(rand.Reader, &template, &template, publicKey, privateKey)
 	if err != nil {
-		return &tls.Certificate{}, err
+		return nil, fmt.Errorf("failed to create certificate: %v", err)
 	}
 
 	// Encode the private key and certificate in PEM format.
@@ -210,7 +211,7 @@ func GetSelfSignedCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, err
 	// Create a TLS certificate using the PEM-encoded bytes.
 	cert, err := tls.X509KeyPair(certificatePEM, privateKeyPEM)
 	if err != nil {
-		return &tls.Certificate{}, err
+		return nil, fmt.Errorf("failed to create X509 key pair: %v", err)
 	}
 
 	return &cert, nil
