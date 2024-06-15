@@ -87,6 +87,7 @@ func runServer(manager *autocert.Manager) {
 	// Initialize (fill) the white list and the cert cache.
 	log.Println("Checking certificates...")
 	initCertificates(manager)
+	log.Println("Checking certificates done")
 
 	// Close both server.	// TODO: do this on signal terminate.
 	// terminateServer(httpServer, httpsServer)
