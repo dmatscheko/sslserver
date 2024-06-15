@@ -160,11 +160,11 @@ func GetSelfSignedCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, err
 	//
 	// Due to the "σςΣ" problem (see https://unicode.org/faq/idn.html#22), we can't use
 	// idna.Punycode.ToASCII (or just idna.ToASCII) here.
-	ascii_name, err := idna.Lookup.ToASCII(name)
+	asciiName, err := idna.Lookup.ToASCII(name)
 	if err != nil {
 		return nil, fmt.Errorf("self signed certificate: server name contains invalid character: %s", name)
 	}
-	name = ascii_name
+	name = asciiName
 
 	// Check if the domain name is in the white list.
 	if !allowedDomainsSelfSignedWhiteList[name] {
