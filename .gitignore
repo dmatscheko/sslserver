@@ -22,3 +22,7 @@ sslserver
 config.yml
 *.log
 *.log.*
+/www_static
+/run-main.sh
+/main
+.DS_Store
