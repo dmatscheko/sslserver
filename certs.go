@@ -71,14 +71,13 @@ func (c *rpcCache) Delete(_ context.Context, name string) error {
 // and memoized self-signed certificates for the self-signed domains — or as
 // a fallback when Let's Encrypt fails.
 type certManager struct {
-	acme       *autocert.Manager
-	selfSigned map[string]bool
-	mu         sync.Mutex
-	memo       map[string]*tls.Certificate // self-signed certificates by name
+	acme *autocert.Manager
+	mu   sync.Mutex
+	memo map[string]*tls.Certificate // self-signed certificates by name
 }
 
 func newCertManager() *certManager {
-	m := &certManager{
+	return &certManager{
 		acme: &autocert.Manager{
 			Cache:       &rpcCache{enc: gob.NewEncoder(os.Stdout), dec: gob.NewDecoder(os.Stdin)},
 			Prompt:      autocert.AcceptTOS,
@@ -86,15 +85,8 @@ func newCertManager() *certManager {
 			HostPolicy:  autocert.HostWhitelist(config.letsEncryptDomains...),
 			RenewBefore: config.CertificateExpiryRefreshThreshold,
 		},
-		selfSigned: make(map[string]bool),
-		memo:       make(map[string]*tls.Certificate),
+		memo: make(map[string]*tls.Certificate),
 	}
-	for _, d := range config.SelfSignedDomains {
-		if name, err := idna.Lookup.ToASCII(d); err == nil {
-			m.selfSigned[name] = true
-		}
-	}
-	return m
 }
 
 func (m *certManager) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
@@ -107,10 +99,10 @@ func (m *certManager) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certifica
 		}
 	}
 	name, err := idna.Lookup.ToASCII(name)
-	if err != nil || !config.allDomains[name] {
+	if _, known := config.domainDir[name]; err != nil || !known {
 		return nil, fmt.Errorf("certificate: no certificate for %q", hello.ServerName)
 	}
-	if !m.selfSigned[name] {
+	if !config.selfSigned[name] {
 		cert, err := m.acme.GetCertificate(hello)
 		if err == nil {
 			return cert, nil
@@ -174,11 +166,16 @@ func makeSelfSigned(name string) (*tls.Certificate, error) {
 }
 
 // prewarm obtains or loads a certificate for every known domain so the first
-// real request doesn't have to wait for ACME round trips.
+// real request doesn't have to wait for ACME round trips. Aliases are left
+// out: their DNS may not exist, so their certificate is fetched on first
+// use, when a request proves that the name resolves to this server.
 func (m *certManager) prewarm() {
-	for name := range config.allDomains {
-		if _, err := m.GetCertificate(&tls.ClientHelloInfo{ServerName: name}); err != nil {
-			log.Printf("certificate: prewarm %s: %v", name, err)
+	for host, dir := range config.domainDir {
+		if host != dir {
+			continue
+		}
+		if _, err := m.GetCertificate(&tls.ClientHelloInfo{ServerName: host}); err != nil {
+			log.Printf("certificate: prewarm %s: %v", host, err)
 		}
 	}
 	log.Println("Certificates ready")

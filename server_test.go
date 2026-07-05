@@ -8,10 +8,13 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
+	"strings"
 	"testing"
 	"time"
 
 	"golang.org/x/crypto/acme/autocert"
+	"gopkg.in/yaml.v3"
 )
 
 func withTestConfig(t *testing.T) {
@@ -22,6 +25,8 @@ func withTestConfig(t *testing.T) {
 }
 
 func TestCleanRequestPath(t *testing.T) {
+	withTestConfig(t)
+	config.dotNames = map[string]bool{".well-known": true}
 	cases := []struct {
 		in, want string
 		ok       bool
@@ -33,6 +38,9 @@ func TestCleanRequestPath(t *testing.T) {
 		{"/../../etc/passwd", "/etc/passwd", true}, // resolves inside the web root
 		{"/a/..", "/index.html", true},
 		{"//a//b.js", "/a/b.js", true},
+		{"/.well-known/security.txt", "/.well-known/security.txt", true},
+		{"/.well-known/", "/.well-known/index.html", true},
+		{"/.well-known2/x.txt", "", false}, // only exact dot names are allowed
 		{"/.git/config", "", false},
 		{"/a/.hidden", "", false},
 		{"/a/..%2f", "", false}, // a literal dot-prefixed segment is rejected too
@@ -47,13 +55,19 @@ func TestCleanRequestPath(t *testing.T) {
 
 func TestRequestDomain(t *testing.T) {
 	withTestConfig(t)
-	config.allDomains = map[string]bool{"example.com": true, "127.0.0.1": true}
+	config.domainDir = map[string]string{
+		"example.com":     "example.com",
+		"www.example.com": "example.com", // a www alias maps to the base directory
+		"127.0.0.1":       "127.0.0.1",
+	}
 
 	for host, want := range map[string]string{
-		"example.com":      "example.com",
-		"EXAMPLE.COM":      "example.com",
-		"example.com:8443": "example.com",
-		"127.0.0.1:443":    "127.0.0.1",
+		"example.com":          "example.com",
+		"EXAMPLE.COM":          "example.com",
+		"example.com:8443":     "example.com",
+		"www.example.com":      "example.com",
+		"www.example.com:8443": "example.com",
+		"127.0.0.1:443":        "127.0.0.1",
 	} {
 		if got, err := requestDomain(host); err != nil || got != want {
 			t.Errorf("requestDomain(%q) = %q, %v; want %q", host, got, err, want)
@@ -87,9 +101,67 @@ func TestCheckConfigDomainSplit(t *testing.T) {
 		t.Errorf("letsEncryptDomains = %v, want [example.com]", config.letsEncryptDomains)
 	}
 	for _, d := range []string{"example.com", "localhost", "127.0.0.1"} {
-		if !config.allDomains[d] {
-			t.Errorf("allDomains is missing %q", d)
+		if config.domainDir[d] != d {
+			t.Errorf("domainDir is missing %q", d)
 		}
+	}
+}
+
+func TestCheckConfigWwwAlias(t *testing.T) {
+	withTestConfig(t)
+	dir := t.TempDir()
+	for _, d := range []string{"example.com", "www.other.org"} {
+		if err := os.Mkdir(filepath.Join(dir, d), 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	config.WebRootDirectory = dir
+	config.CertificateCacheDirectory = t.TempDir()
+	config.LogFile = ""
+	config.WwwAlias = true
+
+	if err := checkConfig(); err != nil {
+		t.Fatal(err)
+	}
+	for host, wantDir := range map[string]string{
+		"example.com":     "example.com",
+		"www.example.com": "example.com",
+		"www.other.org":   "www.other.org",
+		"other.org":       "www.other.org",
+		"www.localhost":   "localhost",
+	} {
+		if config.domainDir[host] != wantDir {
+			t.Errorf("domainDir[%q] = %q, want %q", host, config.domainDir[host], wantDir)
+		}
+	}
+	if _, ok := config.domainDir["www.127.0.0.1"]; ok {
+		t.Error("IP addresses must not get a www alias")
+	}
+	if !config.selfSigned["www.localhost"] {
+		t.Error("the alias of a self-signed domain must be self-signed too")
+	}
+	le := map[string]bool{}
+	for _, d := range config.letsEncryptDomains {
+		le[d] = true
+	}
+	for _, d := range []string{"example.com", "www.example.com", "other.org", "www.other.org"} {
+		if !le[d] {
+			t.Errorf("letsEncryptDomains is missing %q", d)
+		}
+	}
+}
+
+// The generated, commented config file must stay in sync with the defaults
+// in the code — otherwise its "Default:" comments would lie.
+func TestDefaultConfigFileMatchesDefaults(t *testing.T) {
+	var fromFile ServerConfig
+	dec := yaml.NewDecoder(strings.NewReader(defaultConfigFile))
+	dec.KnownFields(true)
+	if err := dec.Decode(&fromFile); err != nil {
+		t.Fatal(err)
+	}
+	if want := defaultConfig(); !reflect.DeepEqual(fromFile, want) {
+		t.Errorf("defaultConfigFile drifted from defaultConfig():\nfile:     %+v\ndefaults: %+v", fromFile, want)
 	}
 }
 

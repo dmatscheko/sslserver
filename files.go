@@ -40,8 +40,9 @@ func fillCache() error {
 			log.Println("Warning: skipping unreadable path:", err)
 			return nil
 		}
-		if strings.HasPrefix(d.Name(), ".") && p != root {
-			// Dot files are never served (see cleanRequestPath), so don't cache them.
+		if strings.HasPrefix(d.Name(), ".") && !config.dotNames[d.Name()] && p != root {
+			// Dot names outside serve-dot-names are never served (see
+			// cleanRequestPath), so don't cache them either.
 			if d.IsDir() {
 				return filepath.SkipDir
 			}
@@ -148,7 +149,8 @@ func serveFiles(w http.ResponseWriter, r *http.Request) {
 }
 
 // requestDomain validates the Host header against the domain whitelist and
-// returns its punycoded form, which is also the web root subdirectory name.
+// returns the web root subdirectory to serve — for a www alias that is the
+// aliased domain's directory.
 func requestDomain(host string) (string, error) {
 	if h, _, err := net.SplitHostPort(host); err == nil {
 		host = h
@@ -157,19 +159,23 @@ func requestDomain(host string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if !config.allDomains[name] {
+	dir, ok := config.domainDir[name]
+	if !ok {
 		return "", fmt.Errorf("unknown domain %q", name)
 	}
-	return name, nil
+	return dir, nil
 }
 
 // cleanRequestPath normalizes the URL path, rejects dot files and dot
-// directories, and turns directory requests into their index.html.
+// directories (except the serve-dot-names entries), and turns directory
+// requests into their index.html.
 func cleanRequestPath(p string) (string, bool) {
 	dir := strings.HasSuffix(p, "/")
 	p = path.Clean("/" + p)
-	if strings.Contains(p, "/.") {
-		return "", false
+	for _, segment := range strings.Split(p[1:], "/") {
+		if strings.HasPrefix(segment, ".") && !config.dotNames[segment] {
+			return "", false
+		}
 	}
 	if dir || p == "/" {
 		if p == "/" {

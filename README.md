@@ -37,8 +37,8 @@ The **child** does all the network-facing work. At startup it:
 3. makes the web root world-readable and read-only — files `0444`,
    directories `0555`,
 4. reads every regular file up to `max-cacheable-file-size` into the
-   in-memory cache; dot files/directories, symlinks and special files are
-   skipped,
+   in-memory cache; dot files/directories (except `serve-dot-names`
+   entries), symlinks and special files are skipped,
 5. loads the OS data that Go normally reads lazily from `/etc` (DNS
    resolver configuration, CA roots, MIME types), because `/etc` is not
    reachable from inside the jail,
@@ -81,8 +81,9 @@ privileged ports, `chmod` foreign-owned content, and enter the jail:
 
     sudo ./sslserver
 
-On the first start a `config.yml` with all defaults is created **next to
-the executable**. A different config file can be given with:
+On the first start a fully commented `config.yml` is created **next to the
+executable**; every entry states what it does and its default value, so any
+change can be reverted later. A different config file can be given with:
 
     ./sslserver -config /etc/sslserver/config.yml
 
@@ -99,11 +100,13 @@ startup. Durations use Go syntax (`15s`, `48h`).
 
 | Key | Default | Meaning |
 | --- | --- | --- |
-| `web-root-directory` | `www_static` | One subdirectory per domain; created if missing. All contents are permanently made world-readable and read-only at startup. |
+| `web-root-directory` | `www_static` | One subdirectory per domain, **named exactly like the domain it serves** (e.g. `www_static/example.com`, in lowercase ASCII/punycode form); created if missing. All contents are permanently made world-readable and read-only at startup. |
 | `certificate-cache-directory` | `certcache` | Let's Encrypt account key, private keys and certificates. Parent only; must be outside the web root. |
 | `acme-email` | `""` | Contact for the Let's Encrypt account (expiry notices). Optional but recommended. |
 | `http-addr`, `https-addr` | `:http`, `:https` | Listen addresses; service names are allowed. The HTTP→HTTPS redirect always targets the default port 443. |
 | `self-signed-domains` | `[localhost, 127.0.0.1]` | Domains/IPs that never use Let's Encrypt. A web root directory of the same name is only needed if content should be served for them. |
+| `www-alias` | `false` | Serve `www.example.com` from the `example.com` directory and vice versa when the aliased name has no own directory. Aliases use the original's certificate type; their certificates are obtained on first use. |
+| `serve-dot-names` | `[.well-known]` | Dot files/directories with these exact names are cached and served despite starting with a dot. |
 | `server-name` | `dma-srv` | `Server` response header (`""` = no header). |
 | `http-headers` | security defaults | Response headers, merged over the defaults (HSTS, CSP, `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`). Set a value to `""` to drop a default; add any extra header (e.g. `Cache-Control`) as a new key. |
 | `certificate-expiry-refresh-threshold` | `48h` | Renew certificates this long before they expire (minimum `1h`). Also determines self-signed validity (threshold + 14 days). |
@@ -118,15 +121,18 @@ startup. Durations use Go syntax (`15s`, `48h`).
 
 - The `Host` header — port stripped, internationalized names converted to
   their ASCII (punycode) form — must match a domain directory or a
-  self-signed domain; otherwise 404. There is no automatic `www.` aliasing:
-  `example.com` and `www.example.com` are two separate directories.
-  Symbolic links are not followed, and domain directories must be named in
-  their lowercase ASCII form (the server warns at startup if not).
+  self-signed domain; otherwise 404. `example.com` and `www.example.com`
+  are two separate directories unless `www-alias` is enabled, which serves
+  either name from the other's directory when it has no own one. Symbolic
+  links are not followed, and domain directories must be named in their
+  lowercase ASCII form (the server warns at startup if not).
 - Only `GET` and `HEAD` are answered; other methods get `405`.
 - URL paths are normalized first; any path segment starting with a dot is
-  rejected (hidden files are neither cached nor served). `/` and `…/dir/`
-  serve the directory's `index.html`; `/dir` redirects (`301`) to `/dir/`
-  when that directory has an index.
+  rejected — hidden files are neither cached nor served — unless its name
+  is listed in `serve-dot-names` (by default `.well-known`, for standard
+  URLs like `/.well-known/security.txt`). `/` and `…/dir/` serve the
+  directory's `index.html`; `/dir` redirects (`301`) to `/dir/` when that
+  directory has an index.
 - `Range` requests and conditional requests (`If-Modified-Since` /
   `Last-Modified`) are supported; `Content-Type` comes from the file
   extension.
@@ -139,7 +145,9 @@ startup. Durations use Go syntax (`15s`, `48h`).
   `self-signed-domains`: obtained on first use, prefetched right after
   startup, renewed automatically before expiry. The jailed child performs
   the ACME exchange and the parent persists the results, so renewals need
-  no restart and survive one.
+  no restart and survive one. `www-alias` names are not prefetched — their
+  certificate is obtained on the first request, which proves their DNS
+  actually points at this server.
 - **Self-signed** (ECDSA P-256, with subject alternative names, IP
   addresses supported) for the `self-signed-domains`, and as automatic
   fallback whenever Let's Encrypt fails — Let's Encrypt is retried on

@@ -38,6 +38,14 @@ type ServerConfig struct {
 	// Domains found in the web root are also served under these names.
 	SelfSignedDomains []string `yaml:"self-signed-domains"`
 
+	// Serve "www.example.com" from the "example.com" directory and vice
+	// versa when the aliased name has no own directory.
+	WwwAlias bool `yaml:"www-alias"`
+
+	// Dot files and directories are neither cached nor served, except the
+	// names listed here (e.g. ".well-known").
+	ServeDotNames []string `yaml:"serve-dot-names"`
+
 	// Value of the "Server" response header ("" = no header).
 	ServerName string `yaml:"server-name"`
 
@@ -73,8 +81,10 @@ type ServerConfig struct {
 	LogMaxAge time.Duration `yaml:"log-max-age"`
 
 	// Derived at startup, not part of the YAML file:
-	letsEncryptDomains []string        // web root subdirectories minus SelfSignedDomains
-	allDomains         map[string]bool // punycoded whitelist of every servable domain
+	letsEncryptDomains []string          // every servable host that uses Let's Encrypt
+	domainDir          map[string]string // servable host -> web root subdirectory
+	selfSigned         map[string]bool   // hosts that get self-signed certificates
+	dotNames           map[string]bool   // allowed dot names from ServeDotNames
 }
 
 func defaultConfig() ServerConfig {
@@ -84,6 +94,8 @@ func defaultConfig() ServerConfig {
 		HttpAddr:                  ":http",
 		HttpsAddr:                 ":https",
 		SelfSignedDomains:         []string{"localhost", "127.0.0.1"},
+		WwwAlias:                  false,
+		ServeDotNames:             []string{".well-known"},
 		ServerName:                "dma-srv",
 		HttpHeaders: map[string]string{
 			"X-Content-Type-Options":    "nosniff",
@@ -106,6 +118,103 @@ func defaultConfig() ServerConfig {
 }
 
 var config = defaultConfig()
+
+// defaultConfigFile is written on first start. Every value in it is the
+// default; a test asserts that it stays in sync with defaultConfig().
+const defaultConfigFile = `# sslserver configuration.
+# Every value in this generated file is the default: keys you remove fall
+# back to exactly these values, and the "Default:" comments let you restore
+# single values after changing them. Unknown or misspelled keys are rejected
+# at startup. Durations use Go syntax (15s, 48h). Relative paths are
+# resolved against this file's directory.
+
+# The web root: one subdirectory per domain, named exactly like the domain
+# it serves (e.g. www_static/example.com). Created if missing. All contents
+# are permanently made world-readable and read-only at startup.
+# Default: www_static
+web-root-directory: www_static
+
+# Let's Encrypt account key, private keys and certificates. Used by the
+# parent process only; must be outside the web root.
+# Default: certcache
+certificate-cache-directory: certcache
+
+# Contact e-mail for the Let's Encrypt account (expiry notices).
+# Optional but recommended. Default: ""
+acme-email: ""
+
+# Listen addresses; service names are allowed. The HTTP server answers ACME
+# challenges and redirects everything else to HTTPS (always port 443).
+# Defaults: ":http" and ":https"
+http-addr: :http
+https-addr: :https
+
+# Domains and IPs that never use Let's Encrypt and get a self-signed
+# certificate instead. A web root directory of the same name is only needed
+# if content should be served for them.
+# Default: [localhost, 127.0.0.1]
+self-signed-domains: [localhost, 127.0.0.1]
+
+# Serve "www.example.com" from the "example.com" directory and vice versa
+# when the aliased name has no own directory. Aliases use the same
+# certificate type as the original; their certificates are obtained on
+# first use. Default: false
+www-alias: false
+
+# Dot files and directories are neither cached nor served, except the names
+# listed here. Default: [.well-known]
+serve-dot-names: [.well-known]
+
+# Value of the "Server" response header ("" = no header).
+# Default: dma-srv
+server-name: dma-srv
+
+# Response headers, merged over the built-in defaults shown here. Set a
+# value to "" to drop a default header; add extra headers (for example
+# Cache-Control) as new keys.
+http-headers:
+    Content-Security-Policy: script-src 'self'
+    Permissions-Policy: geolocation=(), microphone=(), camera=()
+    Referrer-Policy: no-referrer
+    Strict-Transport-Security: max-age=63072000; includeSubDomains
+    X-Content-Type-Options: nosniff
+    X-Frame-Options: DENY
+
+# Renew certificates this long before they expire (minimum 1h). Self-signed
+# certificates are valid for this duration plus 14 days.
+# Default: 48h
+certificate-expiry-refresh-threshold: 48h
+
+# Read, write and keep-alive timeouts of both servers.
+# Defaults: 15s, 60s, 60s
+max-request-timeout: 15s
+max-response-timeout: 60s
+max-idle-timeout: 60s
+
+# true: the server jails itself INTO the web root, keeps read-only access,
+# and serves files that are not cached (larger than max-cacheable-file-size
+# or created after startup) from disk. false: the server jails itself into
+# an empty directory and loses all disk access; only cached files can be
+# served. Default: true
+serve-files-not-in-cache: true
+
+# Files up to this size (in bytes) are cached in memory at startup.
+# Default: 1048576 (1 MiB)
+max-cacheable-file-size: 1048576
+
+# Log the client address, method, host and path of every request.
+# Default: true
+log-requests: true
+
+# Log file, written by the parent process and rotated at 5 MB keeping 3 old
+# files; must be outside the web root ("" = log to stdout only).
+# Default: server.log
+log-file: server.log
+
+# Rotated-out log files older than this are deleted, checked hourly
+# ("0" = only the rotation count limits them). Default: 720h (30 days)
+log-max-age: 720h
+`
 
 // configFile is the resolved path of the loaded config file; the parent
 // passes it to the child so both use the same one.
@@ -140,8 +249,7 @@ func loadConfig(path string) error {
 		}
 	case os.IsNotExist(err) && !explicit:
 		log.Println("Creating default config file", path)
-		out, _ := yaml.Marshal(config)
-		if err := os.WriteFile(path, out, 0644); err != nil {
+		if err := os.WriteFile(path, []byte(defaultConfigFile), 0644); err != nil {
 			return err
 		}
 	default:
@@ -198,17 +306,26 @@ func checkConfig() error {
 		return err
 	}
 
+	// Dot files are hidden by default; validate the configured exceptions.
+	config.dotNames = make(map[string]bool, len(config.ServeDotNames))
+	for _, n := range config.ServeDotNames {
+		if !strings.HasPrefix(n, ".") || n == "." || n == ".." || strings.ContainsAny(n, `/\`) {
+			return fmt.Errorf("invalid serve-dot-names entry %q: must be a plain name starting with a dot", n)
+		}
+		config.dotNames[n] = true
+	}
+
 	// Every subdirectory of the web root is a served domain; the ones not
 	// listed as self-signed get a Let's Encrypt certificate.
-	selfSigned := make(map[string]bool, len(config.SelfSignedDomains))
-	config.allDomains = make(map[string]bool)
+	config.selfSigned = make(map[string]bool, len(config.SelfSignedDomains))
+	config.domainDir = make(map[string]string)
 	for _, d := range config.SelfSignedDomains {
 		name, err := idna.Lookup.ToASCII(d)
 		if err != nil {
 			return fmt.Errorf("invalid self-signed domain %q: %w", d, err)
 		}
-		selfSigned[name] = true
-		config.allDomains[name] = true
+		config.selfSigned[name] = true
+		config.domainDir[name] = name
 	}
 	entries, err := os.ReadDir(config.WebRootDirectory)
 	if err != nil {
@@ -227,13 +344,47 @@ func checkConfig() error {
 			// requests arrive in the lowercase ASCII (punycode) form.
 			log.Printf("Warning: domain directory %q should be named %q to be servable", e.Name(), name)
 		}
-		if !selfSigned[name] {
-			config.letsEncryptDomains = append(config.letsEncryptDomains, name)
-		}
-		config.allDomains[name] = true
+		config.domainDir[name] = name
 	}
-	if len(config.allDomains) == 0 {
+
+	// Serve "www.x" from the "x" directory and vice versa. A dedicated
+	// directory always wins; aliases inherit the original's certificate type.
+	if config.WwwAlias {
+		hosts := make([]string, 0, len(config.domainDir))
+		for h := range config.domainDir {
+			hosts = append(hosts, h)
+		}
+		for _, h := range hosts {
+			alias := wwwAlias(h)
+			if _, exists := config.domainDir[alias]; alias == "" || exists {
+				continue
+			}
+			config.domainDir[alias] = config.domainDir[h]
+			if config.selfSigned[h] {
+				config.selfSigned[alias] = true
+			}
+		}
+	}
+
+	for host := range config.domainDir {
+		if !config.selfSigned[host] {
+			config.letsEncryptDomains = append(config.letsEncryptDomains, host)
+		}
+	}
+	if len(config.domainDir) == 0 {
 		return fmt.Errorf("no domains to serve: create one subdirectory per domain in %s", config.WebRootDirectory)
 	}
 	return nil
+}
+
+// wwwAlias returns the "www."-toggled form of a host name, or "" when no
+// alias makes sense (IP addresses).
+func wwwAlias(host string) string {
+	if net.ParseIP(host) != nil {
+		return ""
+	}
+	if after, found := strings.CutPrefix(host, "www."); found {
+		return after
+	}
+	return "www." + host
 }
