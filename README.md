@@ -108,6 +108,38 @@ Windows) the server runs without the jail and prints a warning — useful for
 development with unprivileged ports. The `-child` flag is used internally
 by the parent to start the server child; don't pass it yourself.
 
+## Installing on a Linux server
+
+Build the static binary (cross-compiling works from any machine, e.g.
+`GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o sslserver .`) and give
+it a directory of its own — the config, web root, certificate cache and log
+are all created next to the binary, so that one directory holds everything:
+
+    sudo mkdir -p /opt/sslserver
+    sudo cp sslserver /opt/sslserver/
+    sudo /opt/sslserver/sslserver    # creates config.yml and www_static/; stop with Ctrl-C
+
+Put your content into `/opt/sslserver/www_static/<your-domain>/`, set
+`acme-email` in the config, and make sure the domain's DNS points at this
+server and ports 80/443 are reachable. To start it on boot, create
+`/etc/systemd/system/sslserver.service`:
+
+    [Unit]
+    Description=sslserver static web server
+    After=network-online.target
+    Wants=network-online.target
+
+    [Service]
+    ExecStart=/opt/sslserver/sslserver
+    Restart=on-failure
+
+    [Install]
+    WantedBy=multi-user.target
+
+Then run `sudo systemctl enable --now sslserver`. The `Restart=on-failure`
+also covers a crashed server child, because the parent exits with it. Logs
+end up in `/opt/sslserver/server.log` and in `journalctl -u sslserver`.
+
 ## Configuration
 
 Both processes read the file. Unknown or misspelled keys are rejected at
