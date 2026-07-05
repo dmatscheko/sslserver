@@ -49,6 +49,13 @@ type ServerConfig struct {
 	// versa when the aliased name has no own directory.
 	WwwAlias bool `yaml:"www-alias"`
 
+	// How to answer requests for a host that is not served: "reject" (404;
+	// unknown TLS names are always refused since certificates exist only
+	// for the configured domains), "redirect-to-parent", "serve-parent" or
+	// "serve-default". The parent modes fall back to the default site (the
+	// reserved www_static/default directory) when no parent matches.
+	UnknownDomains string `yaml:"unknown-domains"`
+
 	// Dot files and directories are neither cached nor served, except the
 	// names listed here (e.g. ".well-known").
 	ServeDotNames []string `yaml:"serve-dot-names"`
@@ -60,9 +67,9 @@ type ServerConfig struct {
 	// set a value to "" to disable a default header.
 	HttpHeaders map[string]string `yaml:"http-headers"`
 
-	// Per-domain overrides, keyed by domain name. A www alias inherits the
-	// overrides of the domain whose directory it serves.
-	Domains map[string]DomainConfig `yaml:"domains"`
+	// Named groups of domains sharing setting overrides (see the
+	// domains-override key in the generated config file).
+	DomainsOverride map[string]DomainOverride `yaml:"domains-override"`
 
 	// Renew or regenerate certificates that expire within this duration.
 	CertificateExpiryRefreshThreshold time.Duration `yaml:"certificate-expiry-refresh-threshold"`
@@ -106,16 +113,27 @@ type ServerConfig struct {
 	dotNames           map[string]bool              // allowed dot names from ServeDotNames
 	domainHeaders      map[string]map[string]string // directory domain -> effective headers
 	serveHTTP          map[string]bool              // directory domains served over plain HTTP
+	domainUnknown      map[string]string            // directory domain -> unknown-domains override
+	defaultSite        bool                         // the reserved "default" directory exists
 }
 
-// DomainConfig holds the per-domain overrides of the `domains` config key.
-type DomainConfig struct {
-	// Headers merged over the global HttpHeaders for this domain.
+// DomainOverride is a named group of domains that share setting overrides
+// (one entry of the domains-override config key).
+type DomainOverride struct {
+	// The served domains this group applies to. A www alias inherits the
+	// overrides of the domain whose directory it serves.
+	Domains []string `yaml:"domains"`
+
+	// Headers merged over the global HttpHeaders for these domains.
 	HttpHeaders map[string]string `yaml:"http-headers"`
 
-	// Serve this domain over plain HTTP too, instead of redirecting HTTP
-	// requests to HTTPS. HTTPS keeps working for it as well.
+	// Serve these domains over plain HTTP too, instead of redirecting HTTP
+	// requests to HTTPS. HTTPS keeps working for them as well.
 	ServeHttp bool `yaml:"serve-http"`
+
+	// Override the global unknown-domains behavior for unknown subdomains
+	// of these domains ("" = use the global setting).
+	UnknownDomains string `yaml:"unknown-domains"`
 }
 
 func defaultConfig() ServerConfig {
@@ -127,6 +145,7 @@ func defaultConfig() ServerConfig {
 		HttpsAddr:                 ":https",
 		SelfSignedDomains:         []string{"localhost", "127.0.0.1"},
 		WwwAlias:                  false,
+		UnknownDomains:            "reject",
 		ServeDotNames:             []string{".well-known"},
 		ServerName:                "dma-srv",
 		HttpHeaders: map[string]string{
@@ -137,7 +156,7 @@ func defaultConfig() ServerConfig {
 			"Referrer-Policy":           "no-referrer",
 			"Permissions-Policy":        "geolocation=(), microphone=(), camera=()",
 		},
-		Domains:                           map[string]DomainConfig{},
+		DomainsOverride:                   map[string]DomainOverride{},
 		CertificateExpiryRefreshThreshold: 48 * time.Hour,
 		MaxRequestTimeout:                 15 * time.Second,
 		MaxResponseTimeout:                60 * time.Second,
@@ -203,6 +222,21 @@ self-signed-domains: [localhost, 127.0.0.1]
 # first use. Default: false
 www-alias: false
 
+# How to answer requests for a host that is not served, e.g. an unknown
+# subdomain. One of:
+#   reject             404, and unknown TLS names are refused
+#   redirect-to-parent redirect to the nearest parent domain that is served
+#   serve-parent       serve the nearest parent domain's content
+#   serve-default      serve the content of www_static/default
+# The parent modes fall back to serve-default when no parent matches. The
+# directory name "default" is reserved: it is not a domain and never gets a
+# certificate. Certificates are ONLY ever obtained for the configured
+# domains; with a mode other than reject, an unknown subdomain completes
+# the TLS handshake with its parent domain's certificate (browsers show a
+# name warning once) and any other unknown name with one shared self-signed
+# placeholder certificate. Default: reject
+unknown-domains: reject
+
 # Dot files and directories are neither cached nor served, except the names
 # listed here. Default: [.well-known]
 serve-dot-names: [.well-known]
@@ -222,19 +256,29 @@ http-headers:
     X-Content-Type-Options: nosniff
     X-Frame-Options: DENY
 
-# Per-domain overrides, keyed by domain name (a www alias inherits the
-# overrides of the domain whose directory it serves). Per domain:
-#   http-headers: headers merged over the global http-headers above
-#   serve-http:   serve this domain over plain HTTP too, instead of
-#                 redirecting HTTP to HTTPS (HTTPS keeps working as well)
+# Named override groups: each group applies its settings to all domains
+# listed in it (a www alias inherits the overrides of the domain whose
+# directory it serves; every domain may be covered by one group only).
+# Per group:
+#   domains:         the served domains the group applies to
+#   http-headers:    headers merged over the global http-headers above
+#   serve-http:      serve these domains over plain HTTP too, instead of
+#                    redirecting HTTP to HTTPS (HTTPS keeps working)
+#   unknown-domains: overrides the global unknown-domains setting for
+#                    unknown subdomains of these domains
 # Example:
-#     domains:
-#         example.com:
-#             serve-http: true
+#     domains-override:
+#         production:
+#             serve-http: false
+#             unknown-domains: redirect-to-parent
 #             http-headers:
 #                 Content-Security-Policy: script-src 'self' 'unsafe-inline'
+#             domains: [example.com, www.example.com]
+#         playground:
+#             serve-http: true
+#             domains: [test.example.org]
 # Default: {}
-domains: {}
+domains-override: {}
 
 # Renew certificates this long before they expire (minimum 1h). Self-signed
 # certificates are valid for this duration plus 14 days.
@@ -405,6 +449,12 @@ func checkConfig() error {
 		if !e.IsDir() && !isSymlink {
 			continue
 		}
+		if e.Name() == "default" {
+			// Reserved: the fallback site for unknown-domains. It is not a
+			// domain and MUST never appear in any certificate whitelist.
+			config.defaultSite = e.IsDir()
+			continue
+		}
 		name, err := idna.Lookup.ToASCII(e.Name())
 		if err != nil {
 			return fmt.Errorf("invalid domain directory %q: %w", e.Name(), err)
@@ -469,35 +519,64 @@ func checkConfig() error {
 		return fmt.Errorf("no domains to serve: create one subdirectory per domain in %s", config.WebRootDirectory)
 	}
 
-	// Validate and precompute the per-domain overrides. A key may name a
-	// domain or one of its aliases; the override applies to the directory
-	// domain, so aliases inherit it.
+	switch config.UnknownDomains {
+	case "reject", "redirect-to-parent", "serve-parent", "serve-default":
+	default:
+		return fmt.Errorf("invalid unknown-domains value %q (reject, redirect-to-parent, serve-parent or serve-default)", config.UnknownDomains)
+	}
+	if config.UnknownDomains == "serve-default" && !config.defaultSite {
+		return fmt.Errorf("unknown-domains is serve-default, but there is no %s directory", filepath.Join(config.WebRootDirectory, "default"))
+	}
+
+	// Validate and precompute the override groups. A listed name may be a
+	// domain or one of its aliases; the overrides apply to the directory
+	// domain, so aliases inherit them. Every directory may be covered by
+	// at most one group.
 	config.domainHeaders = map[string]map[string]string{}
 	config.serveHTTP = map[string]bool{}
-	for d, overrides := range config.Domains {
-		name, err := idna.Lookup.ToASCII(d)
-		if err != nil {
-			return fmt.Errorf("invalid domains key %q: %w", d, err)
+	config.domainUnknown = map[string]string{}
+	appliedBy := map[string]string{} // directory domain -> group name
+	for group, o := range config.DomainsOverride {
+		switch o.UnknownDomains {
+		case "", "reject", "redirect-to-parent", "serve-parent", "serve-default":
+		default:
+			return fmt.Errorf("domains-override %q: invalid unknown-domains value %q", group, o.UnknownDomains)
 		}
-		dir, ok := config.domainDir[name]
-		if !ok {
-			return fmt.Errorf("domains entry %q does not match any served domain", d)
+		if o.UnknownDomains == "serve-default" && !config.defaultSite {
+			return fmt.Errorf("domains-override %q: unknown-domains is serve-default, but there is no %s directory", group, filepath.Join(config.WebRootDirectory, "default"))
 		}
-		if overrides.ServeHttp {
-			config.serveHTTP[dir] = true
-		}
-		if len(overrides.HttpHeaders) > 0 {
-			if _, dup := config.domainHeaders[dir]; dup {
-				return fmt.Errorf("domains: multiple http-headers entries apply to %q", dir)
+		for _, d := range o.Domains {
+			name, err := idna.Lookup.ToASCII(d)
+			if err != nil {
+				return fmt.Errorf("domains-override %q: invalid domain %q: %w", group, d, err)
 			}
-			merged := make(map[string]string, len(config.HttpHeaders)+len(overrides.HttpHeaders))
-			for k, v := range config.HttpHeaders {
-				merged[k] = v
+			dir, ok := config.domainDir[name]
+			if !ok {
+				return fmt.Errorf("domains-override %q: %q does not match any served domain", group, d)
 			}
-			for k, v := range overrides.HttpHeaders {
-				merged[k] = v
+			if prev, ok := appliedBy[dir]; ok {
+				if prev != group {
+					return fmt.Errorf("domain %q is covered by both override groups %q and %q", dir, prev, group)
+				}
+				continue // an alias and its domain in the same group
 			}
-			config.domainHeaders[dir] = merged
+			appliedBy[dir] = group
+			if o.ServeHttp {
+				config.serveHTTP[dir] = true
+			}
+			if o.UnknownDomains != "" {
+				config.domainUnknown[dir] = o.UnknownDomains
+			}
+			if len(o.HttpHeaders) > 0 {
+				merged := make(map[string]string, len(config.HttpHeaders)+len(o.HttpHeaders))
+				for k, v := range config.HttpHeaders {
+					merged[k] = v
+				}
+				for k, v := range o.HttpHeaders {
+					merged[k] = v
+				}
+				config.domainHeaders[dir] = merged
+			}
 		}
 	}
 	return nil

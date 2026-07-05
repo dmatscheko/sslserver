@@ -154,10 +154,11 @@ startup. Durations use Go syntax (`15s`, `48h`).
 | `http-addr`, `https-addr` | `:http`, `:https` | Listen addresses; service names are allowed. The HTTP→HTTPS redirect always targets the default port 443. |
 | `self-signed-domains` | `[localhost, 127.0.0.1]` | Domains/IPs that never use Let's Encrypt. A web root directory of the same name is only needed if content should be served for them. |
 | `www-alias` | `false` | Serve `www.example.com` from the `example.com` directory and vice versa when the aliased name has no own directory. Aliases use the original's certificate type; their certificates are obtained on first use. |
+| `unknown-domains` | `reject` | What to do with requests for hosts that are not served: `reject` (404, TLS refused), `redirect-to-parent`, `serve-parent` or `serve-default`. The parent modes strip subdomain labels until a served domain matches and fall back to the reserved `www_static/default/` site. With a mode other than `reject`, an unknown subdomain completes TLS with its parent's certificate (one browser name warning) and any other unknown name with a single shared self-signed placeholder — nothing is ever requested from Let's Encrypt for unknown names. Overridable per group via `domains-override`. |
 | `serve-dot-names` | `[.well-known]` | Dot files/directories with these exact names are cached and served despite starting with a dot. |
 | `server-name` | `dma-srv` | `Server` response header (`""` = no header). |
 | `http-headers` | security defaults | Response headers, merged over the defaults (HSTS, CSP, `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`). Set a value to `""` to drop a default; add any extra header (e.g. `Cache-Control`) as a new key. |
-| `domains` | `{}` | Per-domain overrides, keyed by domain name (aliases inherit them): `http-headers` merged over the global ones, and `serve-http: true` to serve the site over plain HTTP instead of redirecting (HTTPS keeps working; HSTS is never sent over plain HTTP). |
+| `domains-override` | `{}` | Named groups of domains sharing overrides. Each group lists its `domains` (aliases inherit from their directory's domain; one group per domain) and may set `http-headers` (merged over the global ones), `serve-http: true` (serve over plain HTTP instead of redirecting; HSTS is never sent over plain HTTP), and `unknown-domains` for unknown subdomains of the group's domains. |
 | `certificate-expiry-refresh-threshold` | `48h` | Renew certificates this long before they expire (minimum `1h`). Also determines self-signed validity (threshold + 14 days). |
 | `max-request-timeout`, `max-response-timeout`, `max-idle-timeout` | `15s`, `60s`, `60s` | Read, write and keep-alive timeouts of both servers. |
 | `max-connections` | `1024` | Maximum concurrent connections per listener (`0` = unlimited). |
@@ -194,8 +195,20 @@ startup. Durations use Go syntax (`15s`, `48h`).
   strong `ETag` (a content hash, computed once at startup) plus
   `Last-Modified`. `Range` requests are supported; `Content-Type` comes
   from the file extension.
-- Everything else — unknown domain, traversal attempts, missing files —
-  gets a plain `404` without details.
+- Requests for unknown hosts (e.g. subdomains without a directory) get a
+  plain `404` by default. With `unknown-domains` (global or per override
+  group) they can instead be redirected to the nearest served parent
+  domain, or answered with the parent's or the reserved
+  `www_static/default/` site's content. Certificates are **only ever**
+  obtained for the explicitly configured domains (directories, symlink
+  aliases, `www-alias` names): in the fallback modes an unknown subdomain
+  completes the TLS handshake with its *parent's* certificate — browsers
+  show a name warning once, then the redirect moves them to the valid name
+  — and entirely unknown names get one shared self-signed placeholder
+  certificate, renewed like all self-signed certificates. Real site
+  content is never served over plain HTTP unless the parent has
+  `serve-http`.
+- Traversal attempts and missing files get a plain `404` without details.
 
 ## Certificates
 

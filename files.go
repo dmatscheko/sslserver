@@ -133,8 +133,18 @@ func serveFiles(w http.ResponseWriter, r *http.Request) {
 
 	domain, err := requestDomain(r.Host)
 	if err != nil {
-		http.NotFound(w, r)
-		return
+		host, _ := normalizeHost(r.Host) // "" on error matches no parent
+		redirectHost, dir := unknownHostFallback(host, r.TLS != nil)
+		switch {
+		case redirectHost != "":
+			http.Redirect(w, r, "https://"+redirectHost+r.URL.RequestURI(), http.StatusFound)
+			return
+		case dir != "":
+			domain = dir
+		default:
+			http.NotFound(w, r)
+			return
+		}
 	}
 	urlPath, ok := cleanRequestPath(r.URL.Path)
 	if !ok {
@@ -212,28 +222,32 @@ func headersFor(domain string) map[string]string {
 }
 
 // serveHTTPFallback handles plain-HTTP requests that are not ACME
-// challenges: domains configured with serve-http get their real content,
-// everything else is redirected to HTTPS.
+// challenges. Served domains are redirected to HTTPS (or, with serve-http,
+// answered directly); unknown hosts go through the same unknown-domains
+// fallback as serveFiles.
 func serveHTTPFallback(w http.ResponseWriter, r *http.Request) {
-	if domain, err := requestDomain(r.Host); err == nil && config.serveHTTP[domain] {
-		serveFiles(w, r)
+	if domain, err := requestDomain(r.Host); err == nil && !config.serveHTTP[domain] {
+		host, _ := normalizeHost(r.Host)
+		http.Redirect(w, r, "https://"+host+r.URL.RequestURI(), http.StatusFound)
 		return
 	}
-	host := r.Host
+	serveFiles(w, r)
+}
+
+// normalizeHost strips an optional port and converts the host to its
+// lowercase ASCII (punycode) form.
+func normalizeHost(host string) (string, error) {
 	if h, _, err := net.SplitHostPort(host); err == nil {
 		host = h
 	}
-	http.Redirect(w, r, "https://"+host+r.URL.RequestURI(), http.StatusFound)
+	return idna.Lookup.ToASCII(host)
 }
 
 // requestDomain validates the Host header against the domain whitelist and
 // returns the web root subdirectory to serve — for a www alias that is the
 // aliased domain's directory.
 func requestDomain(host string) (string, error) {
-	if h, _, err := net.SplitHostPort(host); err == nil {
-		host = h
-	}
-	name, err := idna.Lookup.ToASCII(host)
+	name, err := normalizeHost(host)
 	if err != nil {
 		return "", err
 	}
@@ -242,6 +256,72 @@ func requestDomain(host string) (string, error) {
 		return "", fmt.Errorf("unknown domain %q", name)
 	}
 	return dir, nil
+}
+
+// nearestParent returns the closest served parent domain of host by
+// stripping subdomain labels ("" when none matches). IP addresses have no
+// parent domains.
+func nearestParent(host string) string {
+	if net.ParseIP(host) != nil {
+		return ""
+	}
+	for h := host; ; {
+		i := strings.Index(h, ".")
+		if i < 0 {
+			return ""
+		}
+		h = h[i+1:]
+		if _, ok := config.domainDir[h]; ok {
+			return h
+		}
+	}
+}
+
+// unknownModeFor returns the effective unknown-domains mode for unknown
+// hosts below the given directory domain: the domain's override group
+// setting, or the global one.
+func unknownModeFor(dir string) string {
+	if mode, ok := config.domainUnknown[dir]; ok {
+		return mode
+	}
+	return config.UnknownDomains
+}
+
+// unknownHostFallback decides what to do with a request for a host that is
+// not served, according to unknown-domains: redirect to the nearest parent
+// domain, serve the parent's or the default site's directory, or nothing.
+// Certificates are never requested for unknown hosts.
+func unknownHostFallback(host string, overHTTPS bool) (redirectHost, dir string) {
+	mode := config.UnknownDomains
+	parent := nearestParent(host)
+	if parent != "" {
+		mode = unknownModeFor(config.domainDir[parent])
+	}
+	switch mode {
+	case "redirect-to-parent":
+		if parent != "" {
+			return parent, ""
+		}
+	case "serve-parent":
+		if parent != "" {
+			parentDir := config.domainDir[parent]
+			// Plain-HTTP content is only served for serve-http parents;
+			// otherwise redirect, which also moves the browser to a name
+			// that has a certificate.
+			if !overHTTPS && !config.serveHTTP[parentDir] {
+				return parent, ""
+			}
+			return "", parentDir
+		}
+	case "serve-default":
+	default: // "reject"
+		return "", ""
+	}
+	// serve-default, or a parent mode without any matching parent.
+	if config.defaultSite {
+		return "", "default"
+	}
+	return "", ""
 }
 
 // cleanRequestPath normalizes the URL path, rejects dot files and dot

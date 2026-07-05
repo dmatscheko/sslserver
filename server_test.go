@@ -393,6 +393,125 @@ func TestServeHTTPFallback(t *testing.T) {
 	}
 }
 
+// The reserved "default" directory must never become a domain (and thus
+// never get a certificate), only the fallback site for unknown-domains.
+func TestCheckConfigDefaultSiteReserved(t *testing.T) {
+	withTestConfig(t)
+	dir := t.TempDir()
+	for _, d := range []string{"example.com", "default"} {
+		if err := os.Mkdir(filepath.Join(dir, d), 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	config.WebRootDirectory = dir
+	config.CertificateCacheDirectory = t.TempDir()
+	config.LogFile = ""
+	config.WwwAlias = true
+
+	if err := checkConfig(); err != nil {
+		t.Fatal(err)
+	}
+	if !config.defaultSite {
+		t.Error("default directory not detected")
+	}
+	for _, name := range []string{"default", "www.default"} {
+		if _, ok := config.domainDir[name]; ok {
+			t.Errorf("%q must not be a served domain", name)
+		}
+	}
+	for _, d := range config.letsEncryptDomains {
+		if strings.Contains(d, "default") {
+			t.Errorf("letsEncryptDomains must not contain %q", d)
+		}
+	}
+
+	// serve-default without a default directory is a config error.
+	config = defaultConfig()
+	config.WebRootDirectory = t.TempDir()
+	config.CertificateCacheDirectory = t.TempDir()
+	config.LogFile = ""
+	config.UnknownDomains = "serve-default"
+	if err := checkConfig(); err == nil {
+		t.Error("want error for serve-default without a default directory")
+	}
+}
+
+func TestUnknownHostFallback(t *testing.T) {
+	withTestConfig(t)
+	config.dotNames = map[string]bool{}
+	config.domainDir = map[string]string{"example.com": "example.com", "plain.org": "plain.org"}
+	config.serveHTTP = map[string]bool{"plain.org": true}
+	config.defaultSite = true
+	fileCache = map[string]cacheEntry{
+		"example.com/index.html": {data: []byte("parent"), etag: "a", modTime: time.Now()},
+		"plain.org/index.html":   {data: []byte("plain-parent"), etag: "b", modTime: time.Now()},
+		"default/index.html":     {data: []byte("default-site"), etag: "c", modTime: time.Now()},
+	}
+
+	request := func(handler func(http.ResponseWriter, *http.Request), host string, https bool) *httptest.ResponseRecorder {
+		req := httptest.NewRequest("GET", "http://"+host+"/", nil)
+		if https {
+			req.TLS = &tls.ConnectionState{}
+		}
+		rr := httptest.NewRecorder()
+		handler(rr, req)
+		return rr
+	}
+
+	// reject (default): unknown hosts get 404 everywhere.
+	if rr := request(serveHTTPFallback, "sub.example.com", false); rr.Code != http.StatusNotFound {
+		t.Errorf("reject: got %d, want 404", rr.Code)
+	}
+
+	// redirect-to-parent: strip labels until a served domain matches.
+	config.UnknownDomains = "redirect-to-parent"
+	rr := request(serveHTTPFallback, "a.b.example.com", false)
+	if rr.Code != http.StatusFound || rr.Header().Get("Location") != "https://example.com/" {
+		t.Errorf("redirect-to-parent: got %d %q", rr.Code, rr.Header().Get("Location"))
+	}
+	// ... and falls back to the default site when nothing matches.
+	if rr := request(serveHTTPFallback, "nothing.invalid", false); rr.Body.String() != "default-site" {
+		t.Errorf("redirect-to-parent without parent: got %q, want default site", rr.Body.String())
+	}
+
+	// serve-parent over TLS serves the parent's content directly; over
+	// plain HTTP it redirects unless the parent has serve-http.
+	config.UnknownDomains = "serve-parent"
+	if rr := request(serveFiles, "sub.example.com", true); rr.Body.String() != "parent" {
+		t.Errorf("serve-parent (https): got %q", rr.Body.String())
+	}
+	rr = request(serveHTTPFallback, "sub.example.com", false)
+	if rr.Code != http.StatusFound || rr.Header().Get("Location") != "https://example.com/" {
+		t.Errorf("serve-parent (http): got %d %q", rr.Code, rr.Header().Get("Location"))
+	}
+	if rr := request(serveHTTPFallback, "sub.plain.org", false); rr.Body.String() != "plain-parent" {
+		t.Errorf("serve-parent (http, serve-http parent): got %q", rr.Body.String())
+	}
+
+	// serve-default ignores parents entirely.
+	config.UnknownDomains = "serve-default"
+	if rr := request(serveFiles, "sub.example.com", true); rr.Body.String() != "default-site" {
+		t.Errorf("serve-default: got %q", rr.Body.String())
+	}
+
+	// A group's unknown-domains override wins over the global setting for
+	// unknown subdomains of its domains.
+	config.UnknownDomains = "redirect-to-parent"
+	config.domainUnknown = map[string]string{"example.com": "reject"}
+	if rr := request(serveFiles, "sub.example.com", true); rr.Code != http.StatusNotFound {
+		t.Errorf("group reject: got %d, want 404", rr.Code)
+	}
+	if rr := request(serveHTTPFallback, "sub.plain.org", false); rr.Code != http.StatusFound {
+		t.Errorf("global mode for ungrouped domain: got %d, want 302", rr.Code)
+	}
+	config.domainUnknown = map[string]string{}
+
+	// Known domains are never affected by the fallback.
+	if rr := request(serveFiles, "example.com", true); rr.Body.String() != "parent" {
+		t.Errorf("known domain: got %q", rr.Body.String())
+	}
+}
+
 // A symlinked domain directory (www.example.com -> example.com) is served
 // as an alias of its target; symlinks leaving the web root are ignored.
 func TestCheckConfigSymlinkedDomain(t *testing.T) {
@@ -430,36 +549,117 @@ func TestCheckConfigSymlinkedDomain(t *testing.T) {
 }
 
 func TestCheckConfigDomainOverrides(t *testing.T) {
-	withTestConfig(t)
 	dir := t.TempDir()
 	os.Mkdir(filepath.Join(dir, "example.com"), 0755)
-	config.WebRootDirectory = dir
-	config.CertificateCacheDirectory = t.TempDir()
-	config.LogFile = ""
-	config.WwwAlias = true
-	config.Domains = map[string]DomainConfig{
-		// Keyed by the alias: must apply to the directory domain.
-		"www.example.com": {ServeHttp: true, HttpHeaders: map[string]string{"Content-Security-Policy": "custom"}},
+	os.Mkdir(filepath.Join(dir, "other.org"), 0755)
+	reset := func() {
+		config = defaultConfig()
+		config.WebRootDirectory = dir
+		config.CertificateCacheDirectory = t.TempDir()
+		config.LogFile = ""
+		config.WwwAlias = true
+	}
+	withTestConfig(t)
+
+	// A group may list a domain and its alias; both resolve to the same
+	// directory and the settings apply once.
+	reset()
+	config.DomainsOverride = map[string]DomainOverride{
+		"production": {
+			Domains:        []string{"example.com", "www.example.com"},
+			ServeHttp:      true,
+			UnknownDomains: "serve-parent",
+			HttpHeaders:    map[string]string{"Content-Security-Policy": "custom"},
+		},
 	}
 	if err := checkConfig(); err != nil {
 		t.Fatal(err)
 	}
 	if !config.serveHTTP["example.com"] {
-		t.Error("serve-http via alias key must apply to the directory domain")
+		t.Error("group serve-http must apply to the directory domain")
+	}
+	if config.domainUnknown["example.com"] != "serve-parent" {
+		t.Errorf("domainUnknown = %q, want serve-parent", config.domainUnknown["example.com"])
+	}
+	if _, ok := config.domainUnknown["other.org"]; ok {
+		t.Error("ungrouped domain must not get an unknown-domains override")
 	}
 	h := config.domainHeaders["example.com"]
 	if h["Content-Security-Policy"] != "custom" || h["X-Frame-Options"] != "DENY" {
-		t.Errorf("per-domain headers not merged over globals: %v", h)
+		t.Errorf("group headers not merged over globals: %v", h)
 	}
 
-	// An override for an unknown domain is a config error.
-	config = defaultConfig()
-	config.WebRootDirectory = dir
-	config.CertificateCacheDirectory = t.TempDir()
-	config.LogFile = ""
-	config.Domains = map[string]DomainConfig{"unknown.example": {}}
+	// The same directory in two different groups is a config error.
+	reset()
+	config.DomainsOverride = map[string]DomainOverride{
+		"a": {Domains: []string{"example.com"}},
+		"b": {Domains: []string{"www.example.com"}},
+	}
 	if err := checkConfig(); err == nil {
-		t.Error("want error for a domains entry that matches no served domain")
+		t.Error("want error for a domain covered by two groups")
+	}
+
+	// A group naming an unserved domain is a config error.
+	reset()
+	config.DomainsOverride = map[string]DomainOverride{
+		"a": {Domains: []string{"unknown.example"}},
+	}
+	if err := checkConfig(); err == nil {
+		t.Error("want error for a group entry that matches no served domain")
+	}
+
+	// An invalid per-group unknown-domains value is a config error.
+	reset()
+	config.DomainsOverride = map[string]DomainOverride{
+		"a": {Domains: []string{"example.com"}, UnknownDomains: "nonsense"},
+	}
+	if err := checkConfig(); err == nil {
+		t.Error("want error for an invalid group unknown-domains value")
+	}
+}
+
+// GetCertificate must never issue anything for unknown names: it answers
+// with the parent's certificate (unknown subdomain, fallback enabled) or
+// one shared self-signed placeholder, and refuses in reject mode.
+func TestGetCertificateUnknownNames(t *testing.T) {
+	withTestConfig(t)
+	config.domainDir = map[string]string{"example.com": "example.com"}
+	config.selfSigned = map[string]bool{"example.com": true}
+	config.domainUnknown = map[string]string{}
+	config.UnknownDomains = "redirect-to-parent"
+	m := newCertManager()
+
+	// Unknown subdomain: the parent domain's certificate.
+	cert, err := m.GetCertificate(&tls.ClientHelloInfo{ServerName: "foo.example.com"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cert.Leaf.DNSNames) != 1 || cert.Leaf.DNSNames[0] != "example.com" {
+		t.Errorf("subdomain cert SAN = %v, want [example.com]", cert.Leaf.DNSNames)
+	}
+
+	// Entirely unknown: one shared placeholder, memoized across names.
+	c1, err := m.GetCertificate(&tls.ClientHelloInfo{ServerName: "nothing.invalid"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c2, err := m.GetCertificate(&tls.ClientHelloInfo{ServerName: "other.invalid"})
+	if err != nil || c1 != c2 {
+		t.Errorf("placeholder cert must be one shared instance (%v)", err)
+	}
+	if len(c1.Leaf.DNSNames) != 1 || c1.Leaf.DNSNames[0] != "default" {
+		t.Errorf("placeholder SAN = %v, want [default]", c1.Leaf.DNSNames)
+	}
+
+	// reject (global and per-group) refuses the handshake.
+	config.UnknownDomains = "reject"
+	if _, err := m.GetCertificate(&tls.ClientHelloInfo{ServerName: "foo.example.com"}); err == nil {
+		t.Error("want handshake refusal in reject mode")
+	}
+	config.UnknownDomains = "serve-default"
+	config.domainUnknown["example.com"] = "reject"
+	if _, err := m.GetCertificate(&tls.ClientHelloInfo{ServerName: "foo.example.com"}); err == nil {
+		t.Error("want handshake refusal for a reject-group subdomain")
 	}
 }
 

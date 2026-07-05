@@ -99,17 +99,37 @@ func (m *certManager) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certifica
 		}
 	}
 	name, err := idna.Lookup.ToASCII(name)
-	if _, known := config.domainDir[name]; err != nil || !known {
-		return nil, fmt.Errorf("certificate: no certificate for %q", hello.ServerName)
-	}
-	if !config.selfSigned[name] {
-		cert, err := m.acme.GetCertificate(hello)
-		if err == nil {
-			return cert, nil
+	if err == nil {
+		if _, known := config.domainDir[name]; known {
+			if !config.selfSigned[name] {
+				cert, err := m.acme.GetCertificate(hello)
+				if err == nil {
+					return cert, nil
+				}
+				log.Printf("certificate: Let's Encrypt failed for %s (%v), using self-signed", name, err)
+			}
+			return m.selfSignedFor(name)
 		}
-		log.Printf("certificate: Let's Encrypt failed for %s (%v), using self-signed", name, err)
+		// Unknown subdomain of a served domain: when its unknown-domains
+		// mode allows a fallback answer, complete the handshake with the
+		// parent's own certificate (browsers warn about the name once) so
+		// the redirect or fallback content can be delivered.
+		if parent := nearestParent(name); parent != "" {
+			if unknownModeFor(config.domainDir[parent]) == "reject" {
+				return nil, fmt.Errorf("certificate: no certificate for %q", hello.ServerName)
+			}
+			parentHello := *hello
+			parentHello.ServerName = parent
+			return m.GetCertificate(&parentHello)
+		}
 	}
-	return m.selfSignedFor(name)
+	// An entirely unknown (or invalid) name: one shared self-signed
+	// placeholder, renewed like every self-signed certificate. Nothing is
+	// ever requested from Let's Encrypt for unknown names.
+	if config.UnknownDomains != "reject" {
+		return m.selfSignedFor("default")
+	}
+	return nil, fmt.Errorf("certificate: no certificate for %q", hello.ServerName)
 }
 
 // selfSignedFor returns a memoized self-signed certificate for name,
