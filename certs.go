@@ -116,7 +116,7 @@ func (m *certManager) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certifica
 		// the redirect or fallback content can be delivered.
 		if parent := nearestParent(name); parent != "" {
 			if unknownModeFor(config.domainDir[parent]) == "reject" {
-				return nil, fmt.Errorf("certificate: no certificate for %q", hello.ServerName)
+				return m.refuse(hello.ServerName)
 			}
 			parentHello := *hello
 			parentHello.ServerName = parent
@@ -129,7 +129,15 @@ func (m *certManager) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certifica
 	if config.UnknownDomains != "reject" {
 		return m.selfSignedFor("default")
 	}
-	return nil, fmt.Errorf("certificate: no certificate for %q", hello.ServerName)
+	return m.refuse(hello.ServerName)
+}
+
+// refuse rejects the handshake for an unserved name. Returning nil without
+// an error makes crypto/tls send the truthful "unrecognized_name" alert
+// instead of the alarming "internal error" one.
+func (m *certManager) refuse(serverName string) (*tls.Certificate, error) {
+	log.Printf("certificate: refusing unknown server name %q", serverName)
+	return nil, nil
 }
 
 // selfSignedFor returns a memoized self-signed certificate for name,

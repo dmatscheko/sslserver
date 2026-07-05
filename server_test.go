@@ -651,15 +651,16 @@ func TestGetCertificateUnknownNames(t *testing.T) {
 		t.Errorf("placeholder SAN = %v, want [default]", c1.Leaf.DNSNames)
 	}
 
-	// reject (global and per-group) refuses the handshake.
+	// reject (global and per-group) refuses the handshake: nil without an
+	// error makes crypto/tls send the "unrecognized_name" alert.
 	config.UnknownDomains = "reject"
-	if _, err := m.GetCertificate(&tls.ClientHelloInfo{ServerName: "foo.example.com"}); err == nil {
-		t.Error("want handshake refusal in reject mode")
+	if cert, err := m.GetCertificate(&tls.ClientHelloInfo{ServerName: "foo.example.com"}); cert != nil || err != nil {
+		t.Errorf("reject mode: got %v, %v; want nil, nil", cert, err)
 	}
 	config.UnknownDomains = "serve-default"
 	config.domainUnknown["example.com"] = "reject"
-	if _, err := m.GetCertificate(&tls.ClientHelloInfo{ServerName: "foo.example.com"}); err == nil {
-		t.Error("want handshake refusal for a reject-group subdomain")
+	if cert, err := m.GetCertificate(&tls.ClientHelloInfo{ServerName: "foo.example.com"}); cert != nil || err != nil {
+		t.Errorf("reject-group subdomain: got %v, %v; want nil, nil", cert, err)
 	}
 }
 

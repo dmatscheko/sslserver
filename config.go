@@ -224,7 +224,8 @@ www-alias: false
 
 # How to answer requests for a host that is not served, e.g. an unknown
 # subdomain. One of:
-#   reject             404, and unknown TLS names are refused
+#   reject             404, and unknown TLS names are refused with an
+#                      "unrecognized_name" alert
 #   redirect-to-parent redirect to the nearest parent domain that is served
 #   serve-parent       serve the nearest parent domain's content
 #   serve-default      serve the content of www_static/default
