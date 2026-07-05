@@ -35,13 +35,18 @@ The **child** does all the network-facing work. At startup it:
 1. reads the same config file as the parent,
 2. binds the HTTP and HTTPS ports (one reason it must start as root),
 3. makes the web root world-readable and read-only — files `0444`,
-   directories `0555`,
+   directories `0555` — and transfers its ownership to root
+   (`chown-web-root`),
 4. reads every regular file up to `max-cacheable-file-size` into the
    in-memory cache; dot files/directories (except `serve-dot-names`
    entries), symlinks and special files are skipped,
-5. loads the OS data that Go normally reads lazily from `/etc` (DNS
-   resolver configuration, CA roots, MIME types), because `/etc` is not
-   reachable from inside the jail,
+5. reads the DNS resolver configuration, the CA root certificates and the
+   MIME type table once. Go normally loads these files from `/etc` only at
+   the moment they are first needed ("lazily") and then keeps them cached
+   in memory for the rest of the process's life. Inside the jail `/etc` no
+   longer exists, so the server forces that first read now — the cached
+   copies are what keep ACME renewals (DNS lookups, TLS verification) and
+   content-type detection working later,
 6. enters the jail: `chroot`, drop to the first of `www`, `www-data`,
    `_www`, `nobody` that exists, verify root cannot be regained, clear the
    environment (Linux, macOS and the BSDs; on Windows only the working
@@ -50,10 +55,15 @@ The **child** does all the network-facing work. At startup it:
 
 ### File system access — what, why, and the two modes
 
-- **The `chmod` in step 3 is real and permanent.** It exists because after
-  the privilege drop the child runs as an unprivileged user that could not
-  read root-owned content otherwise — and because nothing, including the
-  serving process itself, should be able to *write* web content.
+- **The `chmod` and `chown` in step 3 are real and permanent.** The chmod
+  exists because after the privilege drop the child runs as an unprivileged
+  user that could not read root-owned content otherwise — and because
+  nothing, including the serving process itself, should be able to *write*
+  web content. The chown to root exists because permissions alone do not
+  bind an owner: a file owned by the jail user could simply be chmodded
+  writable again by a compromised serving process. Root-owned read-only
+  files are immutable for the jailed child, which runs without any
+  capabilities. Symbolic links are left untouched.
 - **`serve-files-not-in-cache: true` (default):** the child chroots *into
   the web root* and keeps read-only access to it. Requests for files that
   are not cached — larger than `max-cacheable-file-size`, or created after
@@ -101,6 +111,7 @@ startup. Durations use Go syntax (`15s`, `48h`).
 | Key | Default | Meaning |
 | --- | --- | --- |
 | `web-root-directory` | `www_static` | One subdirectory per domain, **named exactly like the domain it serves** (e.g. `www_static/example.com`, in lowercase ASCII/punycode form); created if missing. All contents are permanently made world-readable and read-only at startup. |
+| `chown-web-root` | `true` | Also transfer ownership of all web root contents to root at startup (when started as root). Without this, content owned by the jail user could be chmodded writable again by the serving process. Disable if a non-root user deploys the content. |
 | `certificate-cache-directory` | `certcache` | Let's Encrypt account key, private keys and certificates. Parent only; must be outside the web root. |
 | `acme-email` | `""` | Contact for the Let's Encrypt account (expiry notices). Optional but recommended. |
 | `http-addr`, `https-addr` | `:http`, `:https` | Listen addresses; service names are allowed. The HTTP→HTTPS redirect always targets the default port 443. |

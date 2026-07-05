@@ -33,15 +33,16 @@ func runChild() {
 	}
 	log.Printf("Listening on %s (HTTP) and %s (HTTPS)", config.HttpAddr, config.HttpsAddr)
 
-	setPermissions(config.WebRootDirectory)
+	hardenWebRoot(config.WebRootDirectory)
 	if err := fillCache(); err != nil {
 		log.Fatal(err)
 	}
 
-	// Everything the Go runtime lazily loads from /etc must be warmed up
-	// before the chroot takes it away: the DNS config and the CA roots are
-	// needed for ACME renewals from inside the jail, the MIME table for
-	// serving. Go keeps all three cached once they are loaded.
+	// Go reads the DNS resolver config, the CA roots and the MIME table
+	// from /etc only when they are first used, and then keeps them cached
+	// in memory. Force that first use now: inside the jail /etc no longer
+	// exists, and ACME renewals (DNS lookups, TLS verification) and
+	// content-type detection depend on this data.
 	net.LookupHost("acme-v02.api.letsencrypt.org")
 	x509.SystemCertPool()
 	mime.TypeByExtension(".css")

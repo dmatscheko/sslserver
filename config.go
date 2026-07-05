@@ -23,6 +23,12 @@ type ServerConfig struct {
 	// All files in it are made world-readable and read-only at startup.
 	WebRootDirectory string `yaml:"web-root-directory"`
 
+	// Transfer ownership of everything in the web root to root at startup
+	// (applies when started as root). Only the owner of a file may chmod it,
+	// so without this, content owned by the jail user could be made writable
+	// again by the serving process.
+	ChownWebRoot bool `yaml:"chown-web-root"`
+
 	// Let's Encrypt account data and certificates are stored here. Only the
 	// parent process touches it; it must not be inside the web root.
 	CertificateCacheDirectory string `yaml:"certificate-cache-directory"`
@@ -90,6 +96,7 @@ type ServerConfig struct {
 func defaultConfig() ServerConfig {
 	return ServerConfig{
 		WebRootDirectory:          "www_static",
+		ChownWebRoot:              true,
 		CertificateCacheDirectory: "certcache",
 		HttpAddr:                  ":http",
 		HttpsAddr:                 ":https",
@@ -133,6 +140,13 @@ const defaultConfigFile = `# sslserver configuration.
 # are permanently made world-readable and read-only at startup.
 # Default: www_static
 web-root-directory: www_static
+
+# Give everything in the web root to root at startup (applies when started
+# as root). The owner of a file may always chmod it writable again, so
+# read-only content must be owned by root to be truly immutable for the
+# jailed serving user. Disable this if a non-root user deploys the content.
+# Default: true
+chown-web-root: true
 
 # Let's Encrypt account key, private keys and certificates. Used by the
 # parent process only; must be outside the web root.

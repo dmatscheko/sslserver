@@ -186,15 +186,29 @@ func cleanRequestPath(p string) (string, bool) {
 	return p, true
 }
 
-// setPermissions makes the web root world-readable but read-only
-// (files 0444, directories 0555), so the jailed child can read it but not
-// write to it. Failures are only warned about — content that stays
-// unreadable is skipped by fillCache with its own warning.
-func setPermissions(dir string) {
+// hardenWebRoot makes the web root world-readable but read-only (files
+// 0444, directories 0555) and, with chown-web-root, transfers ownership of
+// everything to root. Ownership is what makes read-only stick: the owner
+// of a file may always chmod it back to writable, so content owned by the
+// jail user would not really be immutable for the serving process.
+// Symlinks and special files are left alone (chmod would follow a symlink
+// to its target, possibly outside the web root). Failures are only warned
+// about — content that stays unreadable is skipped by fillCache with its
+// own warning.
+func hardenWebRoot(dir string) {
+	chown := config.ChownWebRoot && os.Geteuid() == 0
 	filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			log.Println("Warning: cannot access:", err)
 			return nil
+		}
+		if !d.IsDir() && !d.Type().IsRegular() {
+			return nil
+		}
+		if chown {
+			if err := os.Chown(p, 0, 0); err != nil {
+				log.Println("Warning: cannot chown:", err)
+			}
 		}
 		mode := os.FileMode(0444)
 		if d.IsDir() {

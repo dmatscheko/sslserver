@@ -237,6 +237,36 @@ func TestMakeSelfSigned(t *testing.T) {
 	}
 }
 
+// hardenWebRoot must chmod regular files and directories, but leave
+// symlinks alone — chmod would follow them to their target, which can live
+// outside the web root.
+func TestHardenWebRootSkipsSymlinks(t *testing.T) {
+	withTestConfig(t)
+	outside := filepath.Join(t.TempDir(), "outside.txt")
+	if err := os.WriteFile(outside, []byte("x"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	file := filepath.Join(root, "a.txt")
+	os.WriteFile(file, []byte("x"), 0644)
+	if err := os.Symlink(outside, filepath.Join(root, "link.txt")); err != nil {
+		t.Fatal(err)
+	}
+
+	hardenWebRoot(root)
+
+	if info, _ := os.Stat(file); info.Mode().Perm() != 0444 {
+		t.Errorf("file mode = %o, want 0444", info.Mode().Perm())
+	}
+	if info, _ := os.Stat(root); info.Mode().Perm() != 0555 {
+		t.Errorf("dir mode = %o, want 0555", info.Mode().Perm())
+	}
+	if info, _ := os.Stat(outside); info.Mode().Perm() != 0644 {
+		t.Errorf("symlink target mode = %o, want untouched 0644", info.Mode().Perm())
+	}
+	os.Chmod(root, 0755) // let t.TempDir clean up
+}
+
 func TestRotatingWriter(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "test.log")
