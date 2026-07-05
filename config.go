@@ -1,285 +1,229 @@
 package main
 
 import (
-	"io/ioutil"
+	"fmt"
 	"log"
 	"net"
 	"os"
 	"path/filepath"
-	"reflect"
+	"strings"
 	"time"
 
 	"golang.org/x/net/idna"
 	"gopkg.in/yaml.v3"
 )
 
+// ServerConfig holds all settings. Every exported field can be set in the
+// YAML config file; missing fields keep their defaults.
 type ServerConfig struct {
-	// The base directory (the web root) to serve static files from.
-	// Warning, the permissions for all files will be set to `a=r`, and for all directories to `a=rx`.
-	// This is also the directory in which to jail the process on Linux.
+	// Directory with one subdirectory per domain (virtual host) to serve.
+	// All files in it are made world-readable and read-only at startup.
 	WebRootDirectory string `yaml:"web-root-directory"`
 
-	// Let's Encrypt certificates are stored in this directory.
+	// Let's Encrypt account data and certificates are stored here. Only the
+	// parent process touches it; it must not be inside the web root.
 	CertificateCacheDirectory string `yaml:"certificate-cache-directory"`
 
-	// The HTTP address to bind the server to.
-	HttpAddr string `yaml:"http-addr"`
+	// E-mail for the Let's Encrypt account (expiry notices etc.).
+	AcmeEmail string `yaml:"acme-email"`
 
-	// The HTTPS address to bind the server to.
+	// Listen addresses; service names such as ":http" are allowed.
+	HttpAddr  string `yaml:"http-addr"`
 	HttpsAddr string `yaml:"https-addr"`
 
-	// Let's Encrypt white list.
-	// These domains are allowed to fetch a Let's Encrypt certificate.
-	// This is not directly configurable. Instead, the domain directories in www_static will be used
-	// to populate this, and then SelfSignedDomains will be substracted.
-	letsEncryptDomains []string
-
-	// Self signed certificates white list.
-	// For this domains, no certificate will be fetched from Let's Encrypt.
+	// Domains that get a self-signed certificate instead of Let's Encrypt.
+	// Domains found in the web root are also served under these names.
 	SelfSignedDomains []string `yaml:"self-signed-domains"`
 
-	// All allowed domains. This are LetsEncryptDomains + SelfSignedDomains.
-	allDomains map[string]bool
-
-	// Name of the web server used as Server header.
+	// Value of the "Server" response header ("" = no header).
 	ServerName string `yaml:"server-name"`
 
-	// Security http headers.
-	HttpHeaderXContentTypeOptions     string `yaml:"http-header-x-content-type-options"`
-	HttpHeaderStrictTransportSecurity string `yaml:"http-header-strict-transport-security"`
-	HttpHeaderContentSecurityPolicy   string `yaml:"http-header-content-security-policy"`
-	HttpHeaderXFrameOptions           string `yaml:"http-header-x-frame-options"`
+	// Response headers. Entries here are merged over the built-in defaults;
+	// set a value to "" to disable a default header.
+	HttpHeaders map[string]string `yaml:"http-headers"`
 
-	// Renew certificates, if they expire within this duration.
+	// Renew or regenerate certificates that expire within this duration.
 	CertificateExpiryRefreshThreshold time.Duration `yaml:"certificate-expiry-refresh-threshold"`
 
-	// Maximum duration to wait for a request to complete.
-	MaxRequestTimeout time.Duration `yaml:"max-request-timeout"`
-
-	// Maximum duration to wait for a response to complete.
+	MaxRequestTimeout  time.Duration `yaml:"max-request-timeout"`
 	MaxResponseTimeout time.Duration `yaml:"max-response-timeout"`
+	MaxIdleTimeout     time.Duration `yaml:"max-idle-timeout"`
 
-	// Maximum duration to wait for a follow up request.
-	MaxIdleTimeout time.Duration `yaml:"max-idle-timeout"`
-
-	// Serve files if they are not cached in memory. If this is `false`, the server will not even try to read newer files into the cache.
+	// true: the child keeps read-only disk access by jailing itself INTO the
+	// web root, so files larger than max-cacheable-file-size are served from
+	// disk. false: the child jails itself into an empty directory and loses
+	// all disk access; only files cached at startup are served.
 	ServeFilesNotInCache bool `yaml:"serve-files-not-in-cache"`
 
-	// Maximum size for files that are cached in memory.
+	// Files up to this size are cached in memory at startup.
 	MaxCacheableFileSize int64 `yaml:"max-cacheable-file-size"`
 
-	// Log the client IP and URL path of each request.
+	// Log the client address, method and URL of every request.
 	LogRequests bool `yaml:"log-requests"`
 
-	// The name of the log file. If the name is empty, the log output will only be written to stdout.
+	// Log file, written by the parent and rotated at 5 MB keeping 3 old
+	// files ("" = log to stdout only). Must not be inside the web root.
 	LogFile string `yaml:"log-file"`
 
-	/*
-		TODO: Maybe:
+	// Rotated-out log files older than this are deleted
+	// ("0" = only the rotation count limits them).
+	LogMaxAge time.Duration `yaml:"log-max-age"`
 
-		The HTTPS port where to redirect HTTP connections to, because there can be a proxy in front
-		The maximum number of connections the server should allow at once
-		The maximum request body size the server should allow
-		The server's TLS/SSL certificate and key files
-		The level of access logging to enable
-		The location of the server's access and error logs
-		The type of error handling to use (e.g. detailed errors or friendly error pages)
-	*/
-
+	// Derived at startup, not part of the YAML file:
+	letsEncryptDomains []string        // web root subdirectories minus SelfSignedDomains
+	allDomains         map[string]bool // punycoded whitelist of every servable domain
 }
 
-// Set the default values of the config variables.
-var config = ServerConfig{
-	WebRootDirectory:                  "www_static",
-	CertificateCacheDirectory:         "certcache",
-	HttpAddr:                          ":http",
-	HttpsAddr:                         ":https",
-	letsEncryptDomains:                []string{},
-	SelfSignedDomains:                 []string{"localhost", "127.0.0.1"},
-	allDomains:                        nil,
-	ServerName:                        "dma-srv",
-	HttpHeaderXContentTypeOptions:     "nosniff",
-	HttpHeaderStrictTransportSecurity: "max-age=63072000; includeSubDomains",
-	HttpHeaderContentSecurityPolicy:   "script-src 'self'",
-	HttpHeaderXFrameOptions:           "DENY",
-	CertificateExpiryRefreshThreshold: 48 * time.Hour,
-	MaxRequestTimeout:                 15 * time.Second,
-	MaxResponseTimeout:                60 * time.Second,
-	MaxIdleTimeout:                    60 * time.Second,
-	ServeFilesNotInCache:              true,
-	MaxCacheableFileSize:              1024 * 1024,
-	LogRequests:                       true,
-	LogFile:                           "server.log",
+func defaultConfig() ServerConfig {
+	return ServerConfig{
+		WebRootDirectory:          "www_static",
+		CertificateCacheDirectory: "certcache",
+		HttpAddr:                  ":http",
+		HttpsAddr:                 ":https",
+		SelfSignedDomains:         []string{"localhost", "127.0.0.1"},
+		ServerName:                "dma-srv",
+		HttpHeaders: map[string]string{
+			"X-Content-Type-Options":    "nosniff",
+			"Strict-Transport-Security": "max-age=63072000; includeSubDomains",
+			"Content-Security-Policy":   "script-src 'self'",
+			"X-Frame-Options":           "DENY",
+			"Referrer-Policy":           "no-referrer",
+			"Permissions-Policy":        "geolocation=(), microphone=(), camera=()",
+		},
+		CertificateExpiryRefreshThreshold: 48 * time.Hour,
+		MaxRequestTimeout:                 15 * time.Second,
+		MaxResponseTimeout:                60 * time.Second,
+		MaxIdleTimeout:                    60 * time.Second,
+		ServeFilesNotInCache:              true,
+		MaxCacheableFileSize:              1 << 20,
+		LogRequests:                       true,
+		LogFile:                           "server.log",
+		LogMaxAge:                         30 * 24 * time.Hour,
+	}
 }
 
-func readConfig() {
-	// Read the config file.
-	data, err := ioutil.ReadFile("config.yml")
-	if err != nil {
-		// If the file does not exist, create it.
-		log.Println("Configuration file config.yaml does not exist. Creating the file...")
+var config = defaultConfig()
 
-		data, err := yaml.Marshal(config)
+// configFile is the resolved path of the loaded config file; the parent
+// passes it to the child so both use the same one.
+var configFile string
+
+// loadConfig reads the YAML config file. Without an explicit path,
+// config.yml next to the executable is used and created with the defaults
+// when missing. Relative paths inside the config are resolved against the
+// config file's directory, so the working directory never matters.
+func loadConfig(path string) error {
+	explicit := path != ""
+	if !explicit {
+		exe, err := os.Executable()
 		if err != nil {
-			log.Println("Could not marshal config yaml.")
-			return
+			return err
 		}
+		path = filepath.Join(filepath.Dir(exe), "config.yml")
+	}
+	path, err := filepath.Abs(path)
+	if err != nil {
+		return err
+	}
+	configFile = path
 
-		err = ioutil.WriteFile("config.yml", data, 0644)
+	data, err := os.ReadFile(path)
+	switch {
+	case err == nil:
+		if err := yaml.Unmarshal(data, &config); err != nil {
+			return fmt.Errorf("parsing %s: %w", path, err)
+		}
+	case os.IsNotExist(err) && !explicit:
+		log.Println("Creating default config file", path)
+		out, _ := yaml.Marshal(config)
+		if err := os.WriteFile(path, out, 0644); err != nil {
+			return err
+		}
+	default:
+		return err
+	}
+
+	base := filepath.Dir(path)
+	config.WebRootDirectory = absJoin(base, config.WebRootDirectory)
+	config.CertificateCacheDirectory = absJoin(base, config.CertificateCacheDirectory)
+	if config.LogFile != "" {
+		config.LogFile = absJoin(base, config.LogFile)
+	}
+
+	return checkConfig()
+}
+
+func absJoin(base, path string) string {
+	if filepath.IsAbs(path) {
+		return filepath.Clean(path)
+	}
+	return filepath.Join(base, path)
+}
+
+// checkConfig validates and normalizes the configuration and derives the
+// domain whitelists from the web root's subdirectories.
+func checkConfig() error {
+	for _, a := range []*string{&config.HttpAddr, &config.HttpsAddr} {
+		addr, err := net.ResolveTCPAddr("tcp", *a)
 		if err != nil {
-			log.Println("Could not write config yaml.")
-			return
+			return fmt.Errorf("invalid listen address %q: %w", *a, err)
 		}
-
-		log.Println("Done.")
+		*a = addr.String()
 	}
 
-	// Unmarshal the config data into a Config struct.
-	err = yaml.Unmarshal(data, &config)
-	if err != nil {
-		log.Println("config.yaml seems to have invalid syntax or entries.")
-		return
-	}
-
-	// Sanity checks.
-	sanityChecks()
-}
-
-func printConfig(config ServerConfig) {
-	log.Println("Config:")
-
-	// Get the type of the config variable.
-	t := reflect.TypeOf(config)
-
-	// Iterate over all the fields of the config variable.
-	for i := 0; i < t.NumField(); i++ {
-		// Get the config entries name field and its yaml tag.
-		nameField := t.Field(i)
-		yamlTag := nameField.Tag.Get("yaml")
-
-		// Get the config entries value field.
-		valueField := reflect.ValueOf(config).Field(i)
-
-		if valueField.CanInterface() && yamlTag != "" {
-			// Print the field name and its value.
-			log.Println("  "+yamlTag+":", valueField.Interface())
-		}
-	}
-}
-
-func sanityChecks() {
-	// Ensure that the HttpAddr parameter is a valid address and convert its service name into the numeric port number.
-	// If it is not valid, set it to ":80".
-	addr, err := net.ResolveTCPAddr("tcp", config.HttpAddr)
-	if err != nil {
-		config.HttpAddr = ":80"
-		log.Println("Warning: http-addr is invalid. Setting it to :80.")
-	} else {
-		config.HttpAddr = addr.String()
-	}
-
-	// Ensure that the HttpsAddr parameter is a valid address and convert its service name into the numeric port number.
-	// If it is not valid, set it to ":443".
-	addr, err = net.ResolveTCPAddr("tcp", config.HttpsAddr)
-	if err != nil {
-		config.HttpsAddr = ":443"
-		log.Println("Warning: https-addr is invalid. Setting it to :443.")
-	} else {
-		config.HttpsAddr = addr.String()
-	}
-
-	// Ensure that the CertificateExpiryRefreshThreshold parameter has a minimum value of one hour.
 	if config.CertificateExpiryRefreshThreshold < time.Hour {
+		log.Println("Warning: certificate-expiry-refresh-threshold raised to the minimum of one hour")
 		config.CertificateExpiryRefreshThreshold = time.Hour
-		log.Println("Warning: certificate-expiry-refresh-threshold is too low. Setting it to one hour.")
 	}
 
-	// Verify that the LogFile parameter is a valid file path to an existing file.
-	// If it is not valid, set it to an empty string to disable file logging.
-	config.LogFile = filepath.Clean(config.LogFile)
-	if fileInfo, _ := os.Stat(config.LogFile); fileInfo != nil && fileInfo.Mode().IsDir() {
-		config.LogFile = ""
-	}
-
-	// Verify that the WebRootDirectory parameter is a valid path to an existing directory.
-	// Create the directory if it does not exist.
-	// If it is not valid, set it to "www_static".
-	config.WebRootDirectory = filepath.Clean(config.WebRootDirectory)
-	if fileInfo, _ := os.Stat(config.WebRootDirectory); fileInfo != nil && !fileInfo.Mode().IsDir() {
-		config.WebRootDirectory = "www_static"
-	}
-	if _, err := os.Stat(config.WebRootDirectory); os.IsNotExist(err) {
-		if err := os.MkdirAll(config.WebRootDirectory, 0555); err != nil {
-			log.Fatal(err)
+	// The jailed child must never expose or overwrite these.
+	for name, path := range map[string]string{
+		"certificate-cache-directory": config.CertificateCacheDirectory,
+		"log-file":                    config.LogFile,
+	} {
+		if path == "" {
+			continue
+		}
+		if rel, err := filepath.Rel(config.WebRootDirectory, path); err == nil && rel != ".." && !strings.HasPrefix(rel, "../") {
+			return fmt.Errorf("%s (%s) must not be inside web-root-directory (%s)", name, path, config.WebRootDirectory)
 		}
 	}
 
-	// Verify that the CertificateCacheDirectory parameter is a valid path to an existing directory.
-	// Create the directory if it does not exist.
-	// If it is not valid, set it to "certcache".
-	config.CertificateCacheDirectory = filepath.Clean(config.CertificateCacheDirectory)
-	if fileInfo, _ := os.Stat(config.CertificateCacheDirectory); fileInfo != nil && !fileInfo.Mode().IsDir() {
-		// The server has to be able to write certificates into this directory.
-		// It should not be inside the jail or it will be set to read only.
-		config.CertificateCacheDirectory = "certcache"
-	}
-	if _, err := os.Stat(config.CertificateCacheDirectory); os.IsNotExist(err) {
-		if err := os.MkdirAll(config.CertificateCacheDirectory, 0700); err != nil {
-			log.Fatal(err)
-		}
+	if err := os.MkdirAll(config.WebRootDirectory, 0755); err != nil {
+		return err
 	}
 
-	// Fill the directory white list for which to create Let's Encrypt certificates
-	config.letsEncryptDomains = getAllowedDomainsFromSubdirectories(config.WebRootDirectory, config.SelfSignedDomains)
-	if len(config.letsEncryptDomains) == 0 && len(config.SelfSignedDomains) == 0 {
-		log.Fatal("Error: No domain directories specified in web root")
-	}
-
-	// Set all allowed domains
-	config.allDomains = make(map[string]bool, len(config.letsEncryptDomains)+len(config.SelfSignedDomains))
-	for _, h := range config.letsEncryptDomains {
-		if h, err := idna.Lookup.ToASCII(h); err == nil {
-			config.allDomains[h] = true
-		} else {
-			log.Fatalf("Error: Domain '%s' has invalid characters", h)
-		}
-	}
-	for _, h := range config.SelfSignedDomains {
-		if h, err := idna.Lookup.ToASCII(h); err == nil {
-			config.allDomains[h] = true
-		} else {
-			log.Fatalf("Error: Domain '%s' has invalid characters", h)
-		}
-	}
-}
-
-// getAllowedDomainsFromSubdirectories retrieves allowed domains from subdirectories in the webroot directory.
-func getAllowedDomainsFromSubdirectories(webrootDir string, selfSignedDomains []string) []string {
-	var domains []string
-
-	files, err := os.ReadDir(webrootDir)
-	if err != nil {
-		log.Println("Error reading directory:", err)
-		return domains
-	}
-
-	for _, file := range files {
-		resolvedFile, err := os.Stat(filepath.FromSlash(webrootDir + "/" + file.Name()))
+	// Every subdirectory of the web root is a served domain; the ones not
+	// listed as self-signed get a Let's Encrypt certificate.
+	selfSigned := make(map[string]bool, len(config.SelfSignedDomains))
+	config.allDomains = make(map[string]bool)
+	for _, d := range config.SelfSignedDomains {
+		name, err := idna.Lookup.ToASCII(d)
 		if err != nil {
-			log.Println("Error reading directory:", err)
-			return domains
+			return fmt.Errorf("invalid self-signed domain %q: %w", d, err)
 		}
-
-		if resolvedFile.IsDir() {
-			domain := file.Name()
-			for _, selfSignedDomain := range selfSignedDomains {
-				if domain == selfSignedDomain {
-					continue
-				}
-			}
-			domains = append(domains, domain)
-		}
+		selfSigned[name] = true
+		config.allDomains[name] = true
 	}
-
-	return domains
+	entries, err := os.ReadDir(config.WebRootDirectory)
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		name, err := idna.Lookup.ToASCII(e.Name())
+		if err != nil {
+			return fmt.Errorf("invalid domain directory %q: %w", e.Name(), err)
+		}
+		if !selfSigned[name] {
+			config.letsEncryptDomains = append(config.letsEncryptDomains, name)
+		}
+		config.allDomains[name] = true
+	}
+	if len(config.allDomains) == 0 {
+		return fmt.Errorf("no domains to serve: create one subdirectory per domain in %s", config.WebRootDirectory)
+	}
+	return nil
 }

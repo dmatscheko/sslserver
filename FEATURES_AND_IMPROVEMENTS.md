@@ -1,5 +1,9 @@
 # sslserver — Features & Improvement Opportunities
 
+> **Note:** This analysis describes the code as of commit `ed580ee`. The
+> server was subsequently rewritten from scratch, addressing these findings;
+> file and line references below refer to the old implementation.
+
 A small static HTTPS file server in Go (~1500 LoC, 9 files) with automatic Let's Encrypt
 certificates and a privilege-separation design: a **parent process** keeps disk access for
 the certificate cache, while a **child process** runs the actual servers and is meant to be

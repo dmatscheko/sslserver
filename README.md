@@ -1,67 +1,84 @@
-# A web server that serves static files over HTTPS
+# A static web server with HTTPS, automatic certificates and a process jail
 
-A web server that serves static files over HTTPS, manages TLS certificates, has security measures for Linux, and can stop when a certificate expires.
+Serves static files for multiple domains over HTTPS with automatic Let's
+Encrypt certificates. On Linux, the serving process locks itself into a
+chroot jail with no privileges; certificate renewal keeps working from
+inside the jail.
 
-## Description
-### General features
+## Features
 
-- Serves static files from the subdirectory `./jail/www_static`.
-- Reads each file only once and caches it in memory.
-- Serves the static files via HTTPS.
-- Redirects all HTTP requests to HTTPS.
-
-### TLS certificate management
-
-- Automatically fetches TLS certificates from Let's Encrypt.
-- Creates a self signed certificate if Let's Encrypt is unreachable or denies a certificate for a white listed domain.
-- You need to configure the white listed domains.
-
-### Security measures
-
-- If compiled and executed on Linux, the server drops all privileges and jails itself in the `./jail` subdirectory.
+- **Virtual hosting**: every subdirectory of the web root is served as one
+  domain (`www_static/example.com/…` → `https://example.com/…`).
+- **Automatic TLS**: Let's Encrypt certificates (http-01 and tls-alpn-01
+  challenges) with automatic renewal, for every domain directory found in
+  the web root. Domains listed in `self-signed-domains` — and any domain
+  Let's Encrypt fails for — get a self-signed certificate instead.
+- **In-memory cache**: all files up to `max-cacheable-file-size` are read
+  once at startup and served from memory.
+- **Privilege separation**: the parent process keeps the only disk access
+  (certificate cache, log file) and supervises the child, which binds ports
+  80/443, then chroots, drops to the first of `www`/`www-data`/`_www`/
+  `nobody` that exists, and clears its environment (Linux, macOS and the
+  BSDs, when started as root; on Windows only the working directory and
+  environment are restricted). The child reaches the certificate store
+  through a pipe RPC, so renewed certificates are persisted even though the
+  child has no file system.
+  - `serve-files-not-in-cache: true` — the child jails itself *into the web
+    root* and keeps read-only access to it, so files larger than the cache
+    limit are served from disk.
+  - `serve-files-not-in-cache: false` — the child jails itself into an empty
+    directory and loses disk access completely; only cached files are served.
+- HTTP on port 80 answers ACME challenges and redirects everything else to
+  HTTPS. HTTP/2, TLS 1.2+ with the Mozilla-intermediate cipher suites, and
+  configurable security headers. Directory URLs serve their `index.html`
+  (with a canonical redirect), dot files are never served, unknown `Host`
+  headers get a 404.
+- Logging to stdout and a log file with built-in rotation (5 MB, 3 old files
+  kept) and age-based cleanup of rotated-out files (`log-max-age`).
+  `SIGINT`/`SIGTERM` shut the server down gracefully.
 
 ## Build and run
 
-    go run
+    CGO_ENABLED=0 go build -o sslserver .
 
-or (on Linux)
+The binary is fully static (no cgo). Run it as root so it can bind the
+privileged ports and enter the jail:
 
-    go build
-    sudo ./start.sh
+    sudo ./sslserver
 
-or (on Windows)
+On the first start a `config.yml` with all defaults is created **next to the
+executable**. A different config file can be given with:
 
-    go build
-    sslserver
+    ./sslserver -config /etc/sslserver/config.yml
+
+Relative paths inside the config are resolved against the config file's
+directory, so the working directory never matters. Without root (and on
+non-Linux systems) the server runs without the jail and prints a warning —
+useful for development with unprivileged ports.
 
 ## Configuration
 
-At startup a `config.yml` is automatically created. Those are the values that can be changed:
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `web-root-directory` | `www_static` | One subdirectory per domain. All contents are made read-only (`a=r`/`a=rx`) at startup. |
+| `certificate-cache-directory` | `certcache` | Let's Encrypt storage, used by the parent only. Must be outside the web root. |
+| `acme-email` | `""` | E-mail for the Let's Encrypt account. |
+| `http-addr`, `https-addr` | `:http`, `:https` | Listen addresses. |
+| `self-signed-domains` | `[localhost, 127.0.0.1]` | Domains/IPs served with a self-signed certificate instead of Let's Encrypt. |
+| `server-name` | `dma-srv` | `Server` response header (`""` = none). |
+| `http-headers` | security defaults | Response headers, merged over the defaults (HSTS, CSP, `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`). Set a value to `""` to disable it. |
+| `certificate-expiry-refresh-threshold` | `48h` | Renew certificates this long before they expire. |
+| `max-request-timeout`, `max-response-timeout`, `max-idle-timeout` | `15s`, `60s`, `60s` | HTTP server timeouts. |
+| `serve-files-not-in-cache` | `true` | Keep read-only disk access inside the jail (see above). |
+| `max-cacheable-file-size` | `1048576` | Files up to this size are cached in memory at startup. |
+| `log-requests` | `true` | Log every request. |
+| `log-file` | `server.log` | Written by the parent, rotated at 5 MB (`""` = stdout only). |
+| `log-max-age` | `720h` (30 days) | Delete rotated-out log files older than this (`0` = keep them until the rotation count replaces them). |
 
-### Basic settings
-* `web-root-directory`: This specifies the the base directory (web root) to serve static files from. Warning, the permissions for all files will be set to `a=r`, and for all directories to `a=rx`. The default value is `jail/www_static`.
-* `http-addr`: This specifies the HTTP address to bind the server to. The default value is `:http`.
-* `https-addr`: This specifies the HTTPS address to bind the server to. The default value is `:https`.
-### Certificate handling
-* `lets-encrypt-domains`: This is a white list of domains that are allowed to fetch a Let's Encrypt certificate. The default value is empty.
-* `self-signed-domains`: This is a white list of domains for which self-signed certificates are allowed. The domains for Let's Encrypt are automatically added to this list, but you can include additional domains that are only allowed for self-signed certificates. The default value is `localhost`, `127.0.0.1`.
-* `certificate-cache-directory`: Let's Encrypt certificates are stored in this directory. The server has to be able to write certificates into this directory. It should therefore not be inside the jail or it will be set to read only. The default value is `certcache`.
-* `certificate-expiry-refresh-threshold`: This specifies, how long before their expiration the certificates should be renewed. The default value is `48h0m0s` (48 hours).
-### HTTP timeouts
-* `max-request-timeout`: This specifies the maximum duration to wait for a request to complete. The default value is `15s` (15 seconds).
-* `max-response-timeout`: This specifies the maximum duration to wait for a response to complete. The default value is `60s` (60 seconds).
-* `max-idle-timeout`: This specifies the maximum duration to wait for a follow up request. The default value is `60s` (60 seconds).
-### Jail dependent settings
-* `serve-files-not-in-cache`: This can only be `true`, if `jail-process` is set to `false`, or if the `web-root-directory` is inside the `jail-directory`. It determines whether to serve files that are not cached in memory. If this is `false`, the server will not even try to read newer files into the cache or serve big files directly from the disk. The default value is `false`.
-* `max-cacheable-file-size`: This specifies the maximum size for files that are cached in memory. Files can only be served, if they are cached (file size <= `max-cacheable-file-size`), or the `web-root-directory` is inside the `jail-directory`, or the server is NOT jailed. The default value is `1048576` (1 MB).
-* `jail-process`: This determines whether the process should be jailed. If a process is jailed, no file can be larger than the size specified in `max-cacheable-file-size`, or the `web-root-directory` must be inside the `jail-directory`. Jailing the process only works on Linux. On Windows, only the working directory is changed to the `jail-directory` to maintain similar directory access behavior to Linux in the settings. The default value is `true`.
-* `jail-directory`: The directory in which to jail the process. Warning, the permissions for all files will be set to `a=r`, and for all directories to `a=rx`. The default value is `jail`.
-### Logging
-* `log-requests`: Log the client IP and the URL path of each request. Warning, if `jail-process` is set to `true`, the logfiles can not be rotated and will grow indefinitely. The default value is `true`.
-* `log-file`: The name of the log file. If the name is empty (= `""`), the log output will only be written to `stdout`. The default value is `server.log`.
+Content updates require a restart: the cache is filled once at startup, and
+the jailed child intentionally cannot see changed files.
 
-## TODO
+## Development
 
-* Test the behavior of Let's Encrypt when it is unable to store its certificates to the file system. Maybe it crashes.
-* Consider also storing the self-signed certificates.
-* Implement a way to restart the application from within the application itself.
+    go vet .
+    go test .
