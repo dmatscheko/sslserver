@@ -354,7 +354,7 @@ func loadConfig(path string) error {
 		dec := yaml.NewDecoder(bytes.NewReader(data))
 		dec.KnownFields(true) // reject unknown or misspelled keys
 		if err := dec.Decode(&config); err != nil && !errors.Is(err, io.EOF) {
-			return fmt.Errorf("parsing %s: %w", path, err)
+			return fmt.Errorf("parsing %s: %w\nFix or remove the offending keys — a freshly generated config.yml (move this one away) documents all current ones", path, err)
 		}
 	case os.IsNotExist(err) && !explicit:
 		log.Println("Creating default config file", path)
