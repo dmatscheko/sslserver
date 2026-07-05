@@ -1,7 +1,10 @@
 package main
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"os"
@@ -130,7 +133,9 @@ func loadConfig(path string) error {
 	data, err := os.ReadFile(path)
 	switch {
 	case err == nil:
-		if err := yaml.Unmarshal(data, &config); err != nil {
+		dec := yaml.NewDecoder(bytes.NewReader(data))
+		dec.KnownFields(true) // reject unknown or misspelled keys
+		if err := dec.Decode(&config); err != nil && !errors.Is(err, io.EOF) {
 			return fmt.Errorf("parsing %s: %w", path, err)
 		}
 	case os.IsNotExist(err) && !explicit:
@@ -216,6 +221,11 @@ func checkConfig() error {
 		name, err := idna.Lookup.ToASCII(e.Name())
 		if err != nil {
 			return fmt.Errorf("invalid domain directory %q: %w", e.Name(), err)
+		}
+		if name != e.Name() {
+			// Cache keys and disk paths use the directory name as-is, but
+			// requests arrive in the lowercase ASCII (punycode) form.
+			log.Printf("Warning: domain directory %q should be named %q to be servable", e.Name(), name)
 		}
 		if !selfSigned[name] {
 			config.letsEncryptDomains = append(config.letsEncryptDomains, name)

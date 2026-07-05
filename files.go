@@ -40,6 +40,13 @@ func fillCache() error {
 			log.Println("Warning: skipping unreadable path:", err)
 			return nil
 		}
+		if strings.HasPrefix(d.Name(), ".") && p != root {
+			// Dot files are never served (see cleanRequestPath), so don't cache them.
+			if d.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
 		if !d.Type().IsRegular() {
 			if !d.IsDir() {
 				log.Println("Ignoring special file or symlink:", p)

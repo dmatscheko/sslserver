@@ -1,84 +1,163 @@
 # A static web server with HTTPS, automatic certificates and a process jail
 
 Serves static files for multiple domains over HTTPS with automatic Let's
-Encrypt certificates. On Linux, the serving process locks itself into a
-chroot jail with no privileges; certificate renewal keeps working from
-inside the jail.
+Encrypt certificates. The serving process locks itself into a chroot jail
+without privileges; certificate renewal keeps working from inside the jail.
 
 ## Features
 
 - **Virtual hosting**: every subdirectory of the web root is served as one
   domain (`www_static/example.com/…` → `https://example.com/…`).
 - **Automatic TLS**: Let's Encrypt certificates (http-01 and tls-alpn-01
-  challenges) with automatic renewal, for every domain directory found in
-  the web root. Domains listed in `self-signed-domains` — and any domain
-  Let's Encrypt fails for — get a self-signed certificate instead.
+  challenges) with automatic renewal for every domain directory in the web
+  root. Domains listed in `self-signed-domains` — and any domain Let's
+  Encrypt fails for — get a self-signed certificate instead.
 - **In-memory cache**: all files up to `max-cacheable-file-size` are read
   once at startup and served from memory.
-- **Privilege separation**: the parent process keeps the only disk access
-  (certificate cache, log file) and supervises the child, which binds ports
-  80/443, then chroots, drops to the first of `www`/`www-data`/`_www`/
-  `nobody` that exists, and clears its environment (Linux, macOS and the
-  BSDs, when started as root; on Windows only the working directory and
-  environment are restricted). The child reaches the certificate store
-  through a pipe RPC, so renewed certificates are persisted even though the
-  child has no file system.
-  - `serve-files-not-in-cache: true` — the child jails itself *into the web
-    root* and keeps read-only access to it, so files larger than the cache
-    limit are served from disk.
-  - `serve-files-not-in-cache: false` — the child jails itself into an empty
-    directory and loses disk access completely; only cached files are served.
+- **Privilege separation and a real jail** — see below.
 - HTTP on port 80 answers ACME challenges and redirects everything else to
-  HTTPS. HTTP/2, TLS 1.2+ with the Mozilla-intermediate cipher suites, and
-  configurable security headers. Directory URLs serve their `index.html`
-  (with a canonical redirect), dot files are never served, unknown `Host`
-  headers get a 404.
-- Logging to stdout and a log file with built-in rotation (5 MB, 3 old files
-  kept) and age-based cleanup of rotated-out files (`log-max-age`).
-  `SIGINT`/`SIGTERM` shut the server down gracefully.
+  HTTPS. HTTP/2, TLS 1.2+ with the Mozilla-intermediate cipher suites,
+  configurable security headers.
+- Logging to stdout and a rotated, age-pruned log file. `SIGINT`/`SIGTERM`
+  shut the server down gracefully.
+
+## How it works
+
+The program runs as two processes started from the same binary.
+
+The **parent** keeps the only permanent disk access: it stores certificates
+in `certificate-cache-directory`, answers the child's certificate lookups
+over a pipe RPC, and writes the log file. It forwards termination signals
+to the child and exits when the child exits.
+
+The **child** does all the network-facing work. At startup it:
+
+1. reads the same config file as the parent,
+2. binds the HTTP and HTTPS ports (one reason it must start as root),
+3. makes the web root world-readable and read-only — files `0444`,
+   directories `0555`,
+4. reads every regular file up to `max-cacheable-file-size` into the
+   in-memory cache; dot files/directories, symlinks and special files are
+   skipped,
+5. loads the OS data that Go normally reads lazily from `/etc` (DNS
+   resolver configuration, CA roots, MIME types), because `/etc` is not
+   reachable from inside the jail,
+6. enters the jail: `chroot`, drop to the first of `www`, `www-data`,
+   `_www`, `nobody` that exists, verify root cannot be regained, clear the
+   environment (Linux, macOS and the BSDs; on Windows only the working
+   directory is changed and the environment cleared),
+7. serves, obtaining and renewing certificates through the parent.
+
+### File system access — what, why, and the two modes
+
+- **The `chmod` in step 3 is real and permanent.** It exists because after
+  the privilege drop the child runs as an unprivileged user that could not
+  read root-owned content otherwise — and because nothing, including the
+  serving process itself, should be able to *write* web content.
+- **`serve-files-not-in-cache: true` (default):** the child chroots *into
+  the web root* and keeps read-only access to it. Requests for files that
+  are not cached — larger than `max-cacheable-file-size`, or created after
+  startup — are answered from disk, opened read-only per request. This is
+  the mode for serving big files (videos, archives) without holding them in
+  RAM.
+- **`serve-files-not-in-cache: false`:** the child chroots into a freshly
+  created empty directory under the system temp directory and loses every
+  last bit of disk access. Files above the cache limit are reported at
+  startup and answered with 404.
+- **Content updates:** cached files are never re-read — deploy new content,
+  then restart. In the default mode, changes to *uncached* files are visible
+  immediately, since those are read per request.
+- The certificate cache and the log file belong to the parent and must be
+  outside the web root (this is enforced at startup). The certificate cache
+  is created with mode `0700` and contains the Let's Encrypt account key and
+  all private keys — protect and back it up accordingly.
 
 ## Build and run
 
     CGO_ENABLED=0 go build -o sslserver .
 
 The binary is fully static (no cgo). Run it as root so it can bind the
-privileged ports and enter the jail:
+privileged ports, `chmod` foreign-owned content, and enter the jail:
 
     sudo ./sslserver
 
-On the first start a `config.yml` with all defaults is created **next to the
-executable**. A different config file can be given with:
+On the first start a `config.yml` with all defaults is created **next to
+the executable**. A different config file can be given with:
 
     ./sslserver -config /etc/sslserver/config.yml
 
 Relative paths inside the config are resolved against the config file's
 directory, so the working directory never matters. Without root (and on
-non-Linux systems) the server runs without the jail and prints a warning —
-useful for development with unprivileged ports.
+Windows) the server runs without the jail and prints a warning — useful for
+development with unprivileged ports. The `-child` flag is used internally
+by the parent to start the server child; don't pass it yourself.
 
 ## Configuration
 
+Both processes read the file. Unknown or misspelled keys are rejected at
+startup. Durations use Go syntax (`15s`, `48h`).
+
 | Key | Default | Meaning |
 | --- | --- | --- |
-| `web-root-directory` | `www_static` | One subdirectory per domain. All contents are made read-only (`a=r`/`a=rx`) at startup. |
-| `certificate-cache-directory` | `certcache` | Let's Encrypt storage, used by the parent only. Must be outside the web root. |
-| `acme-email` | `""` | E-mail for the Let's Encrypt account. |
-| `http-addr`, `https-addr` | `:http`, `:https` | Listen addresses. |
-| `self-signed-domains` | `[localhost, 127.0.0.1]` | Domains/IPs served with a self-signed certificate instead of Let's Encrypt. |
-| `server-name` | `dma-srv` | `Server` response header (`""` = none). |
-| `http-headers` | security defaults | Response headers, merged over the defaults (HSTS, CSP, `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`). Set a value to `""` to disable it. |
-| `certificate-expiry-refresh-threshold` | `48h` | Renew certificates this long before they expire. |
-| `max-request-timeout`, `max-response-timeout`, `max-idle-timeout` | `15s`, `60s`, `60s` | HTTP server timeouts. |
-| `serve-files-not-in-cache` | `true` | Keep read-only disk access inside the jail (see above). |
-| `max-cacheable-file-size` | `1048576` | Files up to this size are cached in memory at startup. |
-| `log-requests` | `true` | Log every request. |
-| `log-file` | `server.log` | Written by the parent, rotated at 5 MB (`""` = stdout only). |
-| `log-max-age` | `720h` (30 days) | Delete rotated-out log files older than this (`0` = keep them until the rotation count replaces them). |
+| `web-root-directory` | `www_static` | One subdirectory per domain; created if missing. All contents are permanently made world-readable and read-only at startup. |
+| `certificate-cache-directory` | `certcache` | Let's Encrypt account key, private keys and certificates. Parent only; must be outside the web root. |
+| `acme-email` | `""` | Contact for the Let's Encrypt account (expiry notices). Optional but recommended. |
+| `http-addr`, `https-addr` | `:http`, `:https` | Listen addresses; service names are allowed. The HTTP→HTTPS redirect always targets the default port 443. |
+| `self-signed-domains` | `[localhost, 127.0.0.1]` | Domains/IPs that never use Let's Encrypt. A web root directory of the same name is only needed if content should be served for them. |
+| `server-name` | `dma-srv` | `Server` response header (`""` = no header). |
+| `http-headers` | security defaults | Response headers, merged over the defaults (HSTS, CSP, `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`). Set a value to `""` to drop a default; add any extra header (e.g. `Cache-Control`) as a new key. |
+| `certificate-expiry-refresh-threshold` | `48h` | Renew certificates this long before they expire (minimum `1h`). Also determines self-signed validity (threshold + 14 days). |
+| `max-request-timeout`, `max-response-timeout`, `max-idle-timeout` | `15s`, `60s`, `60s` | Read, write and keep-alive timeouts of both servers. |
+| `serve-files-not-in-cache` | `true` | `true`: jail into the web root and serve uncached files from disk. `false`: jail into an empty directory, cache-only (see above). |
+| `max-cacheable-file-size` | `1048576` | Files up to this size (in bytes) are cached in memory at startup. Larger files are served from disk, or not at all — depending on `serve-files-not-in-cache`. |
+| `log-requests` | `true` | Log client address, method, host and path of every request. |
+| `log-file` | `server.log` | Written by the parent; must be outside the web root (`""` = stdout only). |
+| `log-max-age` | `720h` (30 days) | Delete rotated-out log files older than this, checked hourly (`0` = keep them until the rotation count replaces them). |
 
-Content updates require a restart: the cache is filled once at startup, and
-the jailed child intentionally cannot see changed files.
+## Request handling
+
+- The `Host` header — port stripped, internationalized names converted to
+  their ASCII (punycode) form — must match a domain directory or a
+  self-signed domain; otherwise 404. There is no automatic `www.` aliasing:
+  `example.com` and `www.example.com` are two separate directories.
+  Symbolic links are not followed, and domain directories must be named in
+  their lowercase ASCII form (the server warns at startup if not).
+- Only `GET` and `HEAD` are answered; other methods get `405`.
+- URL paths are normalized first; any path segment starting with a dot is
+  rejected (hidden files are neither cached nor served). `/` and `…/dir/`
+  serve the directory's `index.html`; `/dir` redirects (`301`) to `/dir/`
+  when that directory has an index.
+- `Range` requests and conditional requests (`If-Modified-Since` /
+  `Last-Modified`) are supported; `Content-Type` comes from the file
+  extension.
+- Everything else — unknown domain, traversal attempts, missing files —
+  gets a plain `404` without details.
+
+## Certificates
+
+- **Let's Encrypt** for every web root domain not listed in
+  `self-signed-domains`: obtained on first use, prefetched right after
+  startup, renewed automatically before expiry. The jailed child performs
+  the ACME exchange and the parent persists the results, so renewals need
+  no restart and survive one.
+- **Self-signed** (ECDSA P-256, with subject alternative names, IP
+  addresses supported) for the `self-signed-domains`, and as automatic
+  fallback whenever Let's Encrypt fails — Let's Encrypt is retried on
+  later handshakes. Self-signed certificates live only in memory.
+- The on-disk layout is the standard `autocert` cache; an existing cache
+  directory from an earlier installation keeps working.
+
+## Logging
+
+Log lines are prefixed `P` (parent) or `C` (child, the actual server).
+The parent writes everything to stdout and — unless `log-file` is empty —
+to the log file, rotating at 5 MB into `server.log.1` … `.3` and deleting
+rotated files older than `log-max-age`.
 
 ## Development
 
     go vet .
     go test .
+
+Use the package path `.` rather than `./...` — the web root may contain
+directories the Go tool cannot read.

@@ -93,6 +93,23 @@ func TestCheckConfigDomainSplit(t *testing.T) {
 	}
 }
 
+func TestLoadConfigStrictKeys(t *testing.T) {
+	withTestConfig(t)
+	path := filepath.Join(t.TempDir(), "config.yml")
+
+	os.WriteFile(path, []byte("no-such-option: 1\n"), 0644)
+	if err := loadConfig(path); err == nil {
+		t.Error("want error for unknown config key")
+	}
+
+	os.WriteFile(path, []byte("server-name: test\n"), 0644)
+	if err := loadConfig(path); err != nil {
+		t.Errorf("valid config rejected: %v", err)
+	} else if config.ServerName != "test" {
+		t.Errorf("ServerName = %q, want test", config.ServerName)
+	}
+}
+
 func TestCheckConfigRejectsNestedPaths(t *testing.T) {
 	withTestConfig(t)
 	config.WebRootDirectory = t.TempDir()
