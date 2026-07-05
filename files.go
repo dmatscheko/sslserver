@@ -2,9 +2,13 @@ package main
 
 import (
 	"bytes"
+	"compress/gzip"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io/fs"
 	"log"
+	"mime"
 	"net"
 	"net/http"
 	"os"
@@ -20,6 +24,8 @@ import (
 // and is strictly read-only afterwards — so it needs no locking.
 type cacheEntry struct {
 	data    []byte
+	gzip    []byte // precompressed variant, nil when compression doesn't pay off
+	etag    string // content hash, served as the ETag validator
 	modTime time.Time
 }
 
@@ -31,9 +37,12 @@ var fileCache = make(map[string]cacheEntry)
 var diskRoot string
 
 // fillCache loads every file in the web root up to the configured size
-// limit into memory. Cache keys look like "example.com/css/site.css".
+// limits into memory, keeps a gzipped variant of everything that shrinks
+// by at least 10%, and records a content hash for ETag validation. Cache
+// keys look like "example.com/css/site.css".
 func fillCache() error {
-	var files, kilobytes, tooLarge int
+	var files, kilobytes, gzipped, tooLarge, overTotal int
+	var total int64
 	root := config.WebRootDirectory
 	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -58,10 +67,17 @@ func fillCache() error {
 		if err != nil {
 			return err
 		}
+		skip := ""
 		if info.Size() > config.MaxCacheableFileSize {
 			tooLarge++
+			skip = "too large to cache"
+		} else if config.MaxTotalCacheSize > 0 && total+info.Size() > config.MaxTotalCacheSize {
+			overTotal++
+			skip = "cache is full (max-total-cache-size)"
+		}
+		if skip != "" {
 			if !config.ServeFilesNotInCache {
-				log.Println("Warning: too large to cache, will NOT be served:", p)
+				log.Printf("Warning: %s, will NOT be served: %s", skip, p)
 			}
 			return nil
 		}
@@ -73,13 +89,32 @@ func fillCache() error {
 		if err != nil {
 			return err
 		}
-		fileCache[filepath.ToSlash(rel)] = cacheEntry{data, info.ModTime()}
+		sum := sha256.Sum256(data)
+		entry := cacheEntry{data: data, etag: hex.EncodeToString(sum[:16]), modTime: info.ModTime()}
+		// Precompress files of a known type when it saves at least 10%.
+		if ct := mime.TypeByExtension(filepath.Ext(p)); ct != "" && len(data) >= 256 {
+			if gz := gzipBytes(data); len(gz)*10 <= len(data)*9 {
+				entry.gzip = gz
+				gzipped++
+			}
+		}
+		fileCache[filepath.ToSlash(rel)] = entry
+		total += int64(len(data) + len(entry.gzip))
 		files++
 		kilobytes += (len(data) + 1023) / 1024
 		return nil
 	})
-	log.Printf("Cached %d files (%d KiB); %d larger than %d bytes", files, kilobytes, tooLarge, config.MaxCacheableFileSize)
+	log.Printf("Cached %d files (%d KiB, %d with gzip variant); skipped: %d larger than %d bytes, %d over the total cache size",
+		files, kilobytes, gzipped, tooLarge, config.MaxCacheableFileSize, overTotal)
 	return err
+}
+
+func gzipBytes(data []byte) []byte {
+	var buf bytes.Buffer
+	zw, _ := gzip.NewWriterLevel(&buf, gzip.BestCompression)
+	zw.Write(data)
+	zw.Close()
+	return buf.Bytes()
 }
 
 // serveFiles handles every HTTPS request: virtual host chosen by the Host
@@ -109,15 +144,33 @@ func serveFiles(w http.ResponseWriter, r *http.Request) {
 	if config.ServerName != "" {
 		w.Header().Set("Server", config.ServerName)
 	}
-	for name, value := range config.HttpHeaders {
-		if value != "" {
-			w.Header().Set(name, value)
+	for name, value := range headersFor(domain) {
+		if value == "" {
+			continue
 		}
+		if r.TLS == nil && name == "Strict-Transport-Security" {
+			continue // HSTS is meaningless (and misleading) over plain HTTP
+		}
+		w.Header().Set(name, value)
 	}
 
 	key := domain + urlPath
 	if e, ok := fileCache[key]; ok {
-		http.ServeContent(w, r, urlPath, e.modTime, bytes.NewReader(e.data))
+		if ct := mime.TypeByExtension(path.Ext(urlPath)); ct != "" {
+			w.Header().Set("Content-Type", ct)
+		}
+		body, etag := e.data, e.etag
+		if e.gzip != nil {
+			w.Header().Set("Vary", "Accept-Encoding")
+			if strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
+				// A compressed response is a different representation and
+				// therefore gets a different ETag.
+				body, etag = e.gzip, e.etag+"-gz"
+				w.Header().Set("Content-Encoding", "gzip")
+			}
+		}
+		w.Header().Set("ETag", `"`+etag+`"`)
+		http.ServeContent(w, r, urlPath, e.modTime, bytes.NewReader(body))
 		return
 	}
 	// A directory URL without trailing slash: redirect to the canonical form.
@@ -146,6 +199,30 @@ func serveFiles(w http.ResponseWriter, r *http.Request) {
 	} else {
 		http.NotFound(w, r)
 	}
+}
+
+// headersFor returns the effective response headers for a domain: the
+// global set, or the per-domain merge precomputed from `domains`.
+func headersFor(domain string) map[string]string {
+	if h, ok := config.domainHeaders[domain]; ok {
+		return h
+	}
+	return config.HttpHeaders
+}
+
+// serveHTTPFallback handles plain-HTTP requests that are not ACME
+// challenges: domains configured with serve-http get their real content,
+// everything else is redirected to HTTPS.
+func serveHTTPFallback(w http.ResponseWriter, r *http.Request) {
+	if domain, err := requestDomain(r.Host); err == nil && config.serveHTTP[domain] {
+		serveFiles(w, r)
+		return
+	}
+	host := r.Host
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+	http.Redirect(w, r, "https://"+host+r.URL.RequestURI(), http.StatusFound)
 }
 
 // requestDomain validates the Host header against the domain whitelist and

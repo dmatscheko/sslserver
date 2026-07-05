@@ -2,10 +2,14 @@ package main
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
+	"crypto/tls"
 	"encoding/gob"
 	"errors"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -19,9 +23,10 @@ import (
 
 func withTestConfig(t *testing.T) {
 	t.Helper()
-	old := config
-	t.Cleanup(func() { config = old })
+	old, oldCache := config, fileCache
+	t.Cleanup(func() { config, fileCache = old, oldCache })
 	config = defaultConfig()
+	fileCache = map[string]cacheEntry{}
 }
 
 func TestCleanRequestPath(t *testing.T) {
@@ -234,6 +239,161 @@ func TestMakeSelfSigned(t *testing.T) {
 	}
 	if len(cert.Leaf.IPAddresses) != 1 || cert.Leaf.IPAddresses[0].String() != "127.0.0.1" {
 		t.Errorf("IPAddresses = %v, want [127.0.0.1]", cert.Leaf.IPAddresses)
+	}
+}
+
+func TestFillCacheCompressionAndCap(t *testing.T) {
+	withTestConfig(t)
+	root := t.TempDir()
+	os.Mkdir(filepath.Join(root, "localhost"), 0755)
+	compressible := strings.Repeat("compress me please ", 200)
+	os.WriteFile(filepath.Join(root, "localhost", "big.css"), []byte(compressible), 0644)
+	os.WriteFile(filepath.Join(root, "localhost", "tiny.txt"), []byte("hi"), 0644)
+	config.WebRootDirectory = root
+	config.dotNames = map[string]bool{}
+
+	if err := fillCache(); err != nil {
+		t.Fatal(err)
+	}
+	e := fileCache["localhost/big.css"]
+	if e.gzip == nil || len(e.gzip) >= len(e.data) {
+		t.Errorf("compressible file should have a smaller gzip variant (data %d, gzip %d)", len(e.data), len(e.gzip))
+	}
+	if e.etag == "" {
+		t.Error("cached entry has no etag")
+	}
+	if fileCache["localhost/tiny.txt"].gzip != nil {
+		t.Error("tiny file should not get a gzip variant")
+	}
+
+	// With a tiny total cap only the small file fits.
+	fileCache = map[string]cacheEntry{}
+	config.MaxTotalCacheSize = 100
+	if err := fillCache(); err != nil {
+		t.Fatal(err)
+	}
+	if len(fileCache) != 1 || fileCache["localhost/tiny.txt"].data == nil {
+		t.Errorf("cache cap: got %d entries, want only tiny.txt", len(fileCache))
+	}
+}
+
+func TestServeCompressionAndETag(t *testing.T) {
+	withTestConfig(t)
+	root := t.TempDir()
+	os.Mkdir(filepath.Join(root, "localhost"), 0755)
+	content := strings.Repeat("body { color: red } ", 100)
+	os.WriteFile(filepath.Join(root, "localhost", "site.css"), []byte(content), 0644)
+	config.WebRootDirectory = root
+	config.dotNames = map[string]bool{}
+	config.domainDir = map[string]string{"localhost": "localhost"}
+	if err := fillCache(); err != nil {
+		t.Fatal(err)
+	}
+
+	get := func(encoding, ifNoneMatch string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest("GET", "http://localhost/site.css", nil)
+		req.TLS = &tls.ConnectionState{}
+		if encoding != "" {
+			req.Header.Set("Accept-Encoding", encoding)
+		}
+		if ifNoneMatch != "" {
+			req.Header.Set("If-None-Match", ifNoneMatch)
+		}
+		rr := httptest.NewRecorder()
+		serveFiles(rr, req)
+		return rr
+	}
+
+	// Client with gzip support gets the compressed representation.
+	rr := get("gzip, br", "")
+	if rr.Header().Get("Content-Encoding") != "gzip" || rr.Header().Get("Vary") != "Accept-Encoding" {
+		t.Errorf("want gzip encoding with Vary, got %q/%q", rr.Header().Get("Content-Encoding"), rr.Header().Get("Vary"))
+	}
+	etag := rr.Header().Get("ETag")
+	if !strings.HasSuffix(etag, `-gz"`) {
+		t.Errorf("gzip ETag = %s, want -gz suffix", etag)
+	}
+	zr, err := gzip.NewReader(rr.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if body, _ := io.ReadAll(zr); string(body) != content {
+		t.Error("gzip body does not decompress to the original content")
+	}
+
+	// A matching ETag revalidates with 304.
+	if rr := get("gzip", etag); rr.Code != http.StatusNotModified {
+		t.Errorf("If-None-Match: got %d, want 304", rr.Code)
+	}
+
+	// A client without gzip support gets the identity representation.
+	rr = get("", "")
+	if rr.Header().Get("Content-Encoding") != "" || rr.Body.String() != content {
+		t.Error("identity response is wrong")
+	}
+	if got := rr.Header().Get("ETag"); strings.HasSuffix(got, `-gz"`) || got == "" {
+		t.Errorf("identity ETag = %s", got)
+	}
+}
+
+func TestServeHTTPFallback(t *testing.T) {
+	withTestConfig(t)
+	config.dotNames = map[string]bool{}
+	config.domainDir = map[string]string{"plain.example": "plain.example", "secure.example": "secure.example"}
+	config.serveHTTP = map[string]bool{"plain.example": true}
+	fileCache = map[string]cacheEntry{
+		"plain.example/index.html": {data: []byte("plain-ok"), etag: "x", modTime: time.Now()},
+	}
+
+	// serve-http domain: content over plain HTTP, but without HSTS.
+	rr := httptest.NewRecorder()
+	serveHTTPFallback(rr, httptest.NewRequest("GET", "http://plain.example/", nil))
+	if rr.Code != http.StatusOK || rr.Body.String() != "plain-ok" {
+		t.Errorf("serve-http: got %d %q", rr.Code, rr.Body.String())
+	}
+	if rr.Header().Get("Strict-Transport-Security") != "" {
+		t.Error("HSTS must not be sent over plain HTTP")
+	}
+
+	// Everything else redirects to HTTPS, dropping the port.
+	rr = httptest.NewRecorder()
+	serveHTTPFallback(rr, httptest.NewRequest("GET", "http://secure.example:8080/x.html?q=1", nil))
+	if rr.Code != http.StatusFound || rr.Header().Get("Location") != "https://secure.example/x.html?q=1" {
+		t.Errorf("redirect: got %d %q", rr.Code, rr.Header().Get("Location"))
+	}
+}
+
+func TestCheckConfigDomainOverrides(t *testing.T) {
+	withTestConfig(t)
+	dir := t.TempDir()
+	os.Mkdir(filepath.Join(dir, "example.com"), 0755)
+	config.WebRootDirectory = dir
+	config.CertificateCacheDirectory = t.TempDir()
+	config.LogFile = ""
+	config.WwwAlias = true
+	config.Domains = map[string]DomainConfig{
+		// Keyed by the alias: must apply to the directory domain.
+		"www.example.com": {ServeHttp: true, HttpHeaders: map[string]string{"Content-Security-Policy": "custom"}},
+	}
+	if err := checkConfig(); err != nil {
+		t.Fatal(err)
+	}
+	if !config.serveHTTP["example.com"] {
+		t.Error("serve-http via alias key must apply to the directory domain")
+	}
+	h := config.domainHeaders["example.com"]
+	if h["Content-Security-Policy"] != "custom" || h["X-Frame-Options"] != "DENY" {
+		t.Errorf("per-domain headers not merged over globals: %v", h)
+	}
+
+	// An override for an unknown domain is a config error.
+	config = defaultConfig()
+	config.WebRootDirectory = dir
+	config.CertificateCacheDirectory = t.TempDir()
+	config.LogFile = ""
+	config.Domains = map[string]DomainConfig{"unknown.example": {}}
+	if err := checkConfig(); err == nil {
+		t.Error("want error for a domains entry that matches no served domain")
 	}
 }
 

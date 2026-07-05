@@ -59,12 +59,19 @@ type ServerConfig struct {
 	// set a value to "" to disable a default header.
 	HttpHeaders map[string]string `yaml:"http-headers"`
 
+	// Per-domain overrides, keyed by domain name. A www alias inherits the
+	// overrides of the domain whose directory it serves.
+	Domains map[string]DomainConfig `yaml:"domains"`
+
 	// Renew or regenerate certificates that expire within this duration.
 	CertificateExpiryRefreshThreshold time.Duration `yaml:"certificate-expiry-refresh-threshold"`
 
 	MaxRequestTimeout  time.Duration `yaml:"max-request-timeout"`
 	MaxResponseTimeout time.Duration `yaml:"max-response-timeout"`
 	MaxIdleTimeout     time.Duration `yaml:"max-idle-timeout"`
+
+	// Maximum number of concurrent connections per listener ("0" = unlimited).
+	MaxConnections int `yaml:"max-connections"`
 
 	// true: the child keeps read-only disk access by jailing itself INTO the
 	// web root, so files larger than max-cacheable-file-size are served from
@@ -74,6 +81,11 @@ type ServerConfig struct {
 
 	// Files up to this size are cached in memory at startup.
 	MaxCacheableFileSize int64 `yaml:"max-cacheable-file-size"`
+
+	// Stop caching once the total of cached bytes (including precompressed
+	// variants) reaches this limit; further files are treated like files
+	// above max-cacheable-file-size ("0" = unlimited).
+	MaxTotalCacheSize int64 `yaml:"max-total-cache-size"`
 
 	// Log the client address, method and URL of every request.
 	LogRequests bool `yaml:"log-requests"`
@@ -87,10 +99,22 @@ type ServerConfig struct {
 	LogMaxAge time.Duration `yaml:"log-max-age"`
 
 	// Derived at startup, not part of the YAML file:
-	letsEncryptDomains []string          // every servable host that uses Let's Encrypt
-	domainDir          map[string]string // servable host -> web root subdirectory
-	selfSigned         map[string]bool   // hosts that get self-signed certificates
-	dotNames           map[string]bool   // allowed dot names from ServeDotNames
+	letsEncryptDomains []string                     // every servable host that uses Let's Encrypt
+	domainDir          map[string]string            // servable host -> web root subdirectory
+	selfSigned         map[string]bool              // hosts that get self-signed certificates
+	dotNames           map[string]bool              // allowed dot names from ServeDotNames
+	domainHeaders      map[string]map[string]string // directory domain -> effective headers
+	serveHTTP          map[string]bool              // directory domains served over plain HTTP
+}
+
+// DomainConfig holds the per-domain overrides of the `domains` config key.
+type DomainConfig struct {
+	// Headers merged over the global HttpHeaders for this domain.
+	HttpHeaders map[string]string `yaml:"http-headers"`
+
+	// Serve this domain over plain HTTP too, instead of redirecting HTTP
+	// requests to HTTPS. HTTPS keeps working for it as well.
+	ServeHttp bool `yaml:"serve-http"`
 }
 
 func defaultConfig() ServerConfig {
@@ -112,12 +136,15 @@ func defaultConfig() ServerConfig {
 			"Referrer-Policy":           "no-referrer",
 			"Permissions-Policy":        "geolocation=(), microphone=(), camera=()",
 		},
+		Domains:                           map[string]DomainConfig{},
 		CertificateExpiryRefreshThreshold: 48 * time.Hour,
 		MaxRequestTimeout:                 15 * time.Second,
 		MaxResponseTimeout:                60 * time.Second,
 		MaxIdleTimeout:                    60 * time.Second,
+		MaxConnections:                    1024,
 		ServeFilesNotInCache:              true,
 		MaxCacheableFileSize:              1 << 20,
+		MaxTotalCacheSize:                 256 << 20,
 		LogRequests:                       true,
 		LogFile:                           "server.log",
 		LogMaxAge:                         30 * 24 * time.Hour,
@@ -194,6 +221,20 @@ http-headers:
     X-Content-Type-Options: nosniff
     X-Frame-Options: DENY
 
+# Per-domain overrides, keyed by domain name (a www alias inherits the
+# overrides of the domain whose directory it serves). Per domain:
+#   http-headers: headers merged over the global http-headers above
+#   serve-http:   serve this domain over plain HTTP too, instead of
+#                 redirecting HTTP to HTTPS (HTTPS keeps working as well)
+# Example:
+#     domains:
+#         example.com:
+#             serve-http: true
+#             http-headers:
+#                 Content-Security-Policy: script-src 'self' 'unsafe-inline'
+# Default: {}
+domains: {}
+
 # Renew certificates this long before they expire (minimum 1h). Self-signed
 # certificates are valid for this duration plus 14 days.
 # Default: 48h
@@ -205,6 +246,10 @@ max-request-timeout: 15s
 max-response-timeout: 60s
 max-idle-timeout: 60s
 
+# Maximum number of concurrent connections per listener ("0" = unlimited).
+# Default: 1024
+max-connections: 1024
+
 # true: the server jails itself INTO the web root, keeps read-only access,
 # and serves files that are not cached (larger than max-cacheable-file-size
 # or created after startup) from disk. false: the server jails itself into
@@ -215,6 +260,11 @@ serve-files-not-in-cache: true
 # Files up to this size (in bytes) are cached in memory at startup.
 # Default: 1048576 (1 MiB)
 max-cacheable-file-size: 1048576
+
+# Stop caching once the total of cached bytes (including the precompressed
+# variants) reaches this limit; further files are treated like files above
+# max-cacheable-file-size ("0" = unlimited). Default: 268435456 (256 MiB)
+max-total-cache-size: 268435456
 
 # Log the client address, method, host and path of every request.
 # Default: true
@@ -387,6 +437,38 @@ func checkConfig() error {
 	}
 	if len(config.domainDir) == 0 {
 		return fmt.Errorf("no domains to serve: create one subdirectory per domain in %s", config.WebRootDirectory)
+	}
+
+	// Validate and precompute the per-domain overrides. A key may name a
+	// domain or one of its aliases; the override applies to the directory
+	// domain, so aliases inherit it.
+	config.domainHeaders = map[string]map[string]string{}
+	config.serveHTTP = map[string]bool{}
+	for d, overrides := range config.Domains {
+		name, err := idna.Lookup.ToASCII(d)
+		if err != nil {
+			return fmt.Errorf("invalid domains key %q: %w", d, err)
+		}
+		dir, ok := config.domainDir[name]
+		if !ok {
+			return fmt.Errorf("domains entry %q does not match any served domain", d)
+		}
+		if overrides.ServeHttp {
+			config.serveHTTP[dir] = true
+		}
+		if len(overrides.HttpHeaders) > 0 {
+			if _, dup := config.domainHeaders[dir]; dup {
+				return fmt.Errorf("domains: multiple http-headers entries apply to %q", dir)
+			}
+			merged := make(map[string]string, len(config.HttpHeaders)+len(overrides.HttpHeaders))
+			for k, v := range config.HttpHeaders {
+				merged[k] = v
+			}
+			for k, v := range overrides.HttpHeaders {
+				merged[k] = v
+			}
+			config.domainHeaders[dir] = merged
+		}
 	}
 	return nil
 }

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"golang.org/x/crypto/acme"
+	"golang.org/x/net/netutil"
 )
 
 // runChild binds the ports, fills the file cache, drops into the jail and
@@ -30,6 +31,10 @@ func runChild() {
 	httpsLn, err := net.Listen("tcp", config.HttpsAddr)
 	if err != nil {
 		log.Fatal(err)
+	}
+	if config.MaxConnections > 0 {
+		httpLn = netutil.LimitListener(httpLn, config.MaxConnections)
+		httpsLn = netutil.LimitListener(httpsLn, config.MaxConnections)
 	}
 	log.Printf("Listening on %s (HTTP) and %s (HTTPS)", config.HttpAddr, config.HttpsAddr)
 
@@ -72,8 +77,9 @@ func runChild() {
 		ReadTimeout:  config.MaxRequestTimeout,
 		WriteTimeout: config.MaxResponseTimeout,
 		IdleTimeout:  config.MaxIdleTimeout,
-		// Serves ACME http-01 challenges and redirects everything else to HTTPS.
-		Handler: certs.acme.HTTPHandler(nil),
+		// Serves ACME http-01 challenges; everything else is redirected to
+		// HTTPS or, for serve-http domains, served directly.
+		Handler: certs.acme.HTTPHandler(http.HandlerFunc(serveHTTPFallback)),
 	}
 	httpsSrv := &http.Server{
 		ReadTimeout:  config.MaxRequestTimeout,

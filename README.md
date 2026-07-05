@@ -12,12 +12,17 @@ without privileges; certificate renewal keeps working from inside the jail.
   challenges) with automatic renewal for every domain directory in the web
   root. Domains listed in `self-signed-domains` — and any domain Let's
   Encrypt fails for — get a self-signed certificate instead.
-- **In-memory cache**: all files up to `max-cacheable-file-size` are read
-  once at startup and served from memory.
+- **In-memory cache**: all files up to `max-cacheable-file-size` (and up to
+  `max-total-cache-size` in total) are read once at startup and served from
+  memory — with precompressed gzip variants and strong ETags, so most
+  responses are either tiny (304) or compressed.
 - **Privilege separation and a real jail** — see below.
+- **Per-domain overrides** (`domains`): response headers per site, and
+  `serve-http` to serve a site over plain HTTP instead of redirecting it.
 - HTTP on port 80 answers ACME challenges and redirects everything else to
-  HTTPS. HTTP/2, TLS 1.2+ with the Mozilla-intermediate cipher suites,
-  configurable security headers.
+  HTTPS (except `serve-http` domains). HTTP/2, TLS 1.2+ with the
+  Mozilla-intermediate cipher suites, configurable security headers, and a
+  connection cap per listener.
 - Logging to stdout and a rotated, age-pruned log file. `SIGINT`/`SIGTERM`
   shut the server down gracefully.
 
@@ -120,10 +125,13 @@ startup. Durations use Go syntax (`15s`, `48h`).
 | `serve-dot-names` | `[.well-known]` | Dot files/directories with these exact names are cached and served despite starting with a dot. |
 | `server-name` | `dma-srv` | `Server` response header (`""` = no header). |
 | `http-headers` | security defaults | Response headers, merged over the defaults (HSTS, CSP, `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`). Set a value to `""` to drop a default; add any extra header (e.g. `Cache-Control`) as a new key. |
+| `domains` | `{}` | Per-domain overrides, keyed by domain name (aliases inherit them): `http-headers` merged over the global ones, and `serve-http: true` to serve the site over plain HTTP instead of redirecting (HTTPS keeps working; HSTS is never sent over plain HTTP). |
 | `certificate-expiry-refresh-threshold` | `48h` | Renew certificates this long before they expire (minimum `1h`). Also determines self-signed validity (threshold + 14 days). |
 | `max-request-timeout`, `max-response-timeout`, `max-idle-timeout` | `15s`, `60s`, `60s` | Read, write and keep-alive timeouts of both servers. |
+| `max-connections` | `1024` | Maximum concurrent connections per listener (`0` = unlimited). |
 | `serve-files-not-in-cache` | `true` | `true`: jail into the web root and serve uncached files from disk. `false`: jail into an empty directory, cache-only (see above). |
 | `max-cacheable-file-size` | `1048576` | Files up to this size (in bytes) are cached in memory at startup. Larger files are served from disk, or not at all — depending on `serve-files-not-in-cache`. |
+| `max-total-cache-size` | `268435456` (256 MiB) | Stop caching when the total of cached bytes reaches this limit; further files are treated like files above `max-cacheable-file-size` (`0` = unlimited). |
 | `log-requests` | `true` | Log client address, method, host and path of every request. |
 | `log-file` | `server.log` | Written by the parent; must be outside the web root (`""` = stdout only). |
 | `log-max-age` | `720h` (30 days) | Delete rotated-out log files older than this, checked hourly (`0` = keep them until the rotation count replaces them). |
@@ -144,9 +152,14 @@ startup. Durations use Go syntax (`15s`, `48h`).
   URLs like `/.well-known/security.txt`). `/` and `…/dir/` serve the
   directory's `index.html`; `/dir` redirects (`301`) to `/dir/` when that
   directory has an index.
-- `Range` requests and conditional requests (`If-Modified-Since` /
-  `Last-Modified`) are supported; `Content-Type` comes from the file
-  extension.
+- Cached files of known compressible types are also held as a gzip variant
+  (created once at startup when it saves at least 10%) and served with
+  `Content-Encoding: gzip` to clients that accept it, with a correct `Vary`
+  header. Files served from disk are not compressed.
+- Conditional requests are answered with `304`: every cached file carries a
+  strong `ETag` (a content hash, computed once at startup) plus
+  `Last-Modified`. `Range` requests are supported; `Content-Type` comes
+  from the file extension.
 - Everything else — unknown domain, traversal attempts, missing files —
   gets a plain `404` without details.
 
