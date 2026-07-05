@@ -174,8 +174,10 @@ startup. Durations use Go syntax (`15s`, `48h`).
   their ASCII (punycode) form — must match a domain directory or a
   self-signed domain; otherwise 404. `example.com` and `www.example.com`
   are two separate directories unless `www-alias` is enabled, which serves
-  either name from the other's directory when it has no own one. Symbolic
-  links are not followed, and domain directories must be named in their
+  either name from the other's directory when it has no own one. A
+  top-level symlink (`www.example.com -> example.com`) is served as an
+  explicit alias of its target the same way; symbolic links *inside* a
+  site's content are ignored. Domain directories must be named in their
   lowercase ASCII form (the server warns at startup if not).
 - Only `GET` and `HEAD` are answered; other methods get `405`.
 - URL paths are normalized first; any path segment starting with a dot is
@@ -201,9 +203,11 @@ startup. Durations use Go syntax (`15s`, `48h`).
   `self-signed-domains`: obtained on first use, prefetched right after
   startup, renewed automatically before expiry. The jailed child performs
   the ACME exchange and the parent persists the results, so renewals need
-  no restart and survive one. `www-alias` names are not prefetched — their
-  certificate is obtained on the first request, which proves their DNS
-  actually points at this server.
+  no restart and survive one. Alias names (`www-alias` or domain symlinks)
+  whose certificate is already in the cache are loaded and renewed at
+  startup like normal domains; an alias without a cached certificate gets
+  one on its first request, which proves its DNS actually points at this
+  server.
 - **Self-signed** (ECDSA P-256, with subject alternative names, IP
   addresses supported) for the `self-signed-domains`, and as automatic
   fallback whenever Let's Encrypt fails — Let's Encrypt is retried on

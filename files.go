@@ -58,7 +58,8 @@ func fillCache() error {
 			return nil
 		}
 		if !d.Type().IsRegular() {
-			if !d.IsDir() {
+			// Top-level symlinks are domain aliases, handled by checkConfig.
+			if !d.IsDir() && filepath.Dir(p) != root {
 				log.Println("Ignoring special file or symlink:", p)
 			}
 			return nil

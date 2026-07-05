@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log"
 	"net"
 	"os"
@@ -395,8 +396,13 @@ func checkConfig() error {
 	if err != nil {
 		return err
 	}
+	rootResolved, err := filepath.EvalSymlinks(config.WebRootDirectory)
+	if err != nil {
+		return err
+	}
 	for _, e := range entries {
-		if !e.IsDir() {
+		isSymlink := e.Type()&fs.ModeSymlink != 0
+		if !e.IsDir() && !isSymlink {
 			continue
 		}
 		name, err := idna.Lookup.ToASCII(e.Name())
@@ -408,7 +414,31 @@ func checkConfig() error {
 			// requests arrive in the lowercase ASCII (punycode) form.
 			log.Printf("Warning: domain directory %q should be named %q to be servable", e.Name(), name)
 		}
-		config.domainDir[name] = name
+		if !isSymlink {
+			config.domainDir[name] = name
+			continue
+		}
+		// A symlinked domain directory (www.example.com -> example.com) is
+		// served as an alias of its target, which must be a sibling
+		// directory inside the web root.
+		target, err := filepath.EvalSymlinks(filepath.Join(config.WebRootDirectory, e.Name()))
+		if err != nil {
+			log.Printf("Warning: ignoring domain symlink %q: %v", e.Name(), err)
+			continue
+		}
+		if info, err := os.Stat(target); err != nil || !info.IsDir() || filepath.Dir(target) != rootResolved {
+			log.Printf("Warning: ignoring domain symlink %q: target %q is not a sibling directory inside the web root", e.Name(), target)
+			continue
+		}
+		targetName, err := idna.Lookup.ToASCII(filepath.Base(target))
+		if err != nil {
+			log.Printf("Warning: ignoring domain symlink %q: %v", e.Name(), err)
+			continue
+		}
+		config.domainDir[name] = targetName
+		if config.selfSigned[targetName] {
+			config.selfSigned[name] = true
+		}
 	}
 
 	// Serve "www.x" from the "x" directory and vice versa. A dedicated

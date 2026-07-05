@@ -165,16 +165,39 @@ func makeSelfSigned(name string) (*tls.Certificate, error) {
 	return &tls.Certificate{Certificate: [][]byte{der}, PrivateKey: key, Leaf: leaf}, nil
 }
 
+// cachedCertExists reports whether the certificate cache holds anything for
+// name — under its plain (ECDSA) key or the "+rsa" legacy-client key.
+func (m *certManager) cachedCertExists(ctx context.Context, name string) bool {
+	for _, key := range []string{name, name + "+rsa"} {
+		if _, err := m.acme.Cache.Get(ctx, key); err == nil {
+			return true
+		}
+	}
+	return false
+}
+
 // prewarm obtains or loads a certificate for every known domain so the first
-// real request doesn't have to wait for ACME round trips. Aliases are left
-// out: their DNS may not exist, so their certificate is fetched on first
-// use, when a request proves that the name resolves to this server.
+// real request doesn't have to wait for ACME round trips. Alias names
+// (www-alias or domain symlinks) are only warmed when the cache already
+// holds a certificate for them — that keeps their renewal working across
+// restarts. An alias without a cached certificate gets one on its first
+// request, which proves that its DNS actually points at this server.
 func (m *certManager) prewarm() {
+	ctx := context.Background()
 	for host, dir := range config.domainDir {
-		if host != dir {
+		if host != dir && !config.selfSigned[host] && !m.cachedCertExists(ctx, host) {
+			log.Printf("certificate: alias %s has no cached certificate yet, obtaining it on first request", host)
 			continue
 		}
-		if _, err := m.GetCertificate(&tls.ClientHelloInfo{ServerName: host}); err != nil {
+		// Advertise ECDSA support like every modern client, so the same
+		// (ECDSA) certificate is warmed and renewed that browsers get —
+		// an empty ClientHelloInfo would make autocert issue a separate
+		// RSA certificate under the "+rsa" cache key.
+		hello := &tls.ClientHelloInfo{
+			ServerName:   host,
+			CipherSuites: []uint16{tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256},
+		}
+		if _, err := m.GetCertificate(hello); err != nil {
 			log.Printf("certificate: prewarm %s: %v", host, err)
 		}
 	}

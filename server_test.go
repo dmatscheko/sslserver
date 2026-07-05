@@ -224,6 +224,36 @@ func TestCertCacheRPC(t *testing.T) {
 	}
 }
 
+// Aliases are prewarmed only when the cache already holds a certificate
+// for them — under the plain key or the legacy "+rsa" key.
+func TestCachedCertExists(t *testing.T) {
+	withTestConfig(t)
+	config.CertificateCacheDirectory = t.TempDir()
+	reqR, reqW := io.Pipe()
+	respR, respW := io.Pipe()
+	go serveCertCache(reqR, respW)
+	m := &certManager{acme: &autocert.Manager{
+		Cache: &rpcCache{enc: gob.NewEncoder(reqW), dec: gob.NewDecoder(respR)},
+	}}
+	ctx := context.Background()
+
+	if m.cachedCertExists(ctx, "www.example.com") {
+		t.Error("empty cache must report no certificate")
+	}
+	if err := m.acme.Cache.Put(ctx, "www.example.com", []byte("pem")); err != nil {
+		t.Fatal(err)
+	}
+	if !m.cachedCertExists(ctx, "www.example.com") {
+		t.Error("cached certificate not found under its plain key")
+	}
+	if err := m.acme.Cache.Put(ctx, "www.other.org+rsa", []byte("pem")); err != nil {
+		t.Fatal(err)
+	}
+	if !m.cachedCertExists(ctx, "www.other.org") {
+		t.Error("cached certificate not found under its +rsa key")
+	}
+}
+
 func TestMakeSelfSigned(t *testing.T) {
 	withTestConfig(t)
 	cert, err := makeSelfSigned("example.com")
@@ -360,6 +390,42 @@ func TestServeHTTPFallback(t *testing.T) {
 	serveHTTPFallback(rr, httptest.NewRequest("GET", "http://secure.example:8080/x.html?q=1", nil))
 	if rr.Code != http.StatusFound || rr.Header().Get("Location") != "https://secure.example/x.html?q=1" {
 		t.Errorf("redirect: got %d %q", rr.Code, rr.Header().Get("Location"))
+	}
+}
+
+// A symlinked domain directory (www.example.com -> example.com) is served
+// as an alias of its target; symlinks leaving the web root are ignored.
+func TestCheckConfigSymlinkedDomain(t *testing.T) {
+	withTestConfig(t)
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, "example.com"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("example.com", filepath.Join(dir, "www.example.com")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(t.TempDir(), filepath.Join(dir, "outside.example")); err != nil {
+		t.Fatal(err)
+	}
+	config.WebRootDirectory = dir
+	config.CertificateCacheDirectory = t.TempDir()
+	config.LogFile = ""
+
+	if err := checkConfig(); err != nil {
+		t.Fatal(err)
+	}
+	if config.domainDir["www.example.com"] != "example.com" {
+		t.Errorf("domainDir[www.example.com] = %q, want example.com", config.domainDir["www.example.com"])
+	}
+	if _, ok := config.domainDir["outside.example"]; ok {
+		t.Error("a symlink leaving the web root must not become a domain")
+	}
+	le := map[string]bool{}
+	for _, d := range config.letsEncryptDomains {
+		le[d] = true
+	}
+	if !le["www.example.com"] || le["outside.example"] {
+		t.Errorf("letsEncryptDomains = %v", config.letsEncryptDomains)
 	}
 }
 
